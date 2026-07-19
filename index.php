@@ -1,3 +1,10 @@
+<?php
+session_start();
+if (isset($_SESSION['rol'])) {
+    header('Location: ' . ($_SESSION['rol'] === 'administrador' ? 'administrador.php' : 'planeacion.php'));
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -20,7 +27,6 @@
   </style>
 </head>
 <body>
-  <?php session_start(); if (isset($_SESSION['rol'])) { header('Location: ' . ($_SESSION['rol'] === 'administrador' ? 'administrador.php' : 'planeacion.php')); exit; } ?>
   <div class="card card-login">
     <div class="login-header">
       <div class="icono"><i class="bi bi-building"></i></div>

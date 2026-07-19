@@ -1,3 +1,10 @@
+<?php
+session_start();
+if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
+    header('Location: index.php');
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -17,13 +24,6 @@
   <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
-<?php
-session_start();
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
-    header('Location: index.php');
-    exit;
-}
-?>
 
 <div class="container-fluid">
   <div class="row flex-nowrap">
