@@ -1,11 +1,3 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Acceso Temporal</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="p-4 bg-light">
 <?php
 session_start();
 
@@ -47,6 +39,14 @@ if (isset($_GET['entrar'])) {
     }
 }
 ?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Acceso Temporal</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="p-4 bg-light">
 
 <div class="card shadow-sm p-4" style="max-width:600px;margin:auto;">
     <h5 class="text-primary mb-1">🔑 Acceso temporal</h5>
