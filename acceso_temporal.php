@@ -9,12 +9,17 @@
 <?php
 session_start();
 
-// Conexión directa
-$conexion = mysqli_connect("localhost", "root", "", "planeacion_municipal_adan");
-
-if (!$conexion) {
-    die('<div class="alert alert-danger">❌ Error BD: ' . mysqli_connect_error() . '<br>Verifica el nombre de tu base de datos.</div>');
+// Candado: solo entra quien conozca la clave en la URL (?clave=...)
+$claveSecreta = getenv('ACCESO_TEMPORAL_CLAVE');
+if (!$claveSecreta || ($_GET['clave'] ?? '') !== $claveSecreta) {
+    http_response_code(404);
+    die('404 Not Found');
 }
+
+// Conexión usando las mismas credenciales que el resto del sistema (variables de entorno en producción)
+include(__DIR__ . '/Php/conexion.php');
+$obj      = new OperacionesBd;
+$conexion = $obj->conexion();
 
 // Mostrar todos los usuarios que existen
 $resultado = mysqli_query($conexion, "SELECT id_usuario, nombre, usuario, rol, activo FROM usuarios");
