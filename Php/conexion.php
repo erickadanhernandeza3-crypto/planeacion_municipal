@@ -9,11 +9,12 @@ class OperacionesBd {
     public function __construct() {
         // En producción (Render) estas variables se configuran como variables de entorno.
         // En local (XAMPP), si no existen, cae en los valores de siempre.
-        $this->servidor = getenv('DB_HOST') ?: 'localhost';
-        $this->bd       = getenv('DB_NAME') ?: 'planeacion_municipal_adan';
-        $this->usuario  = getenv('DB_USER') ?: 'root';
-        $this->password = getenv('DB_PASS') ?: '';
-        $this->puerto   = getenv('DB_PORT') ?: 3306;
+        // trim() por si al pegar el valor en Render se coló un espacio o salto de línea.
+        $this->servidor = trim(getenv('DB_HOST') ?: 'localhost');
+        $this->bd       = trim(getenv('DB_NAME') ?: 'planeacion_municipal_adan');
+        $this->usuario  = trim(getenv('DB_USER') ?: 'root');
+        $this->password = trim(getenv('DB_PASS') ?: '');
+        $this->puerto   = trim(getenv('DB_PORT') ?: 3306);
     }
 
     public function conexion() {
