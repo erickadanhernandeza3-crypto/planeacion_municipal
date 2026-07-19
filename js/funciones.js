@@ -144,7 +144,7 @@ function renderIndicadoresPrograma(idPrograma, data) {
   const cont = document.getElementById('listaIndicadores');
 
   const filaIndicador = (ind) => `
-    <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 bg-white">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 border rounded p-2 mb-2 bg-white">
       <div>
         <div class="fw-semibold">${ind.descripcion}</div>
         <div class="text-muted" style="font-size:.78rem;">Unidad: ${ind.unidad_medida}</div>
@@ -161,19 +161,19 @@ function renderIndicadoresPrograma(idPrograma, data) {
 
   let html = '';
 
-  html += `<div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+  html += `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 mb-2">
               <h6 class="fw-bold mb-0" style="color:#0A2647;">Fin</h6>
               ${data.fin ? '' : `<button type="button" class="btn btn-sm btn-primary" onclick="abrirFormIndicador(${idPrograma},'fin',null)"><i class="bi bi-plus-lg"></i> Agregar Fin</button>`}
             </div>`;
   html += data.fin ? filaIndicador(data.fin) : '<div class="text-muted small mb-2">Sin definir.</div>';
 
-  html += `<div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+  html += `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 mb-2">
               <h6 class="fw-bold mb-0" style="color:#0A2647;">Propósito</h6>
               ${data.proposito ? '' : `<button type="button" class="btn btn-sm btn-primary" onclick="abrirFormIndicador(${idPrograma},'proposito',null)"><i class="bi bi-plus-lg"></i> Agregar Propósito</button>`}
             </div>`;
   html += data.proposito ? filaIndicador(data.proposito) : '<div class="text-muted small mb-2">Sin definir.</div>';
 
-  html += `<div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+  html += `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 mb-2">
               <h6 class="fw-bold mb-0" style="color:#0A2647;">Componentes</h6>
               <button type="button" class="btn btn-sm btn-primary" onclick="abrirFormIndicador(${idPrograma},'componente',null)"><i class="bi bi-plus-lg"></i> Agregar Componente</button>
             </div>`;
@@ -191,7 +191,7 @@ function renderIndicadoresPrograma(idPrograma, data) {
                 <div class="fw-bold mb-2" style="color:#1a6b3c;">COMPONENTE ${i + 1}</div>
                 ${filaIndicador(c)}
                 <div class="ms-3">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                     <span class="fw-semibold" style="font-size:.85rem;">Actividades</span>
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirFormIndicador(${idPrograma},'actividad',${c.id_indicador})">
                       <i class="bi bi-plus-lg"></i> Agregar Actividad
@@ -380,6 +380,7 @@ function inicializarDataTable(selector, idopc, columnas) {
     "paging":    true,
     "searching": true,
     "ordering":  true,
+    "responsive": true,
     "language": {
       "search":      "Buscar:",
       "lengthMenu":  "Mostrar _MENU_ registros",

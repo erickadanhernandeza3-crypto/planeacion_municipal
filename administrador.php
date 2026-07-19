@@ -18,6 +18,8 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <link rel="stylesheet" href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.css" />
   <script src="https://cdn.datatables.net/2.3.4/js/dataTables.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.6/css/responsive.dataTables.css" />
+  <script src="https://cdn.datatables.net/responsive/3.0.6/js/dataTables.responsive.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
