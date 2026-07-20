@@ -798,6 +798,30 @@ function ReporteConcentracion()
         </div>
 
         <?php
+        // Precarga de TODO el calendario del año y TODOS los indicadores en un par de consultas
+        // (en vez de una consulta por indicador) para que el reporte no se vuelva lento.
+        $calRaw = $obj->mostrardatos("SELECT id_indicador, mes, programado, realizado FROM indicador_calendario WHERE anio = $anio");
+        $calendario = [];
+        foreach ($calRaw as $c) {
+            $calendario[$c['id_indicador']][(int)$c['mes']] = $c;
+        }
+
+        $indicadoresRaw = $obj->mostrardatos("SELECT * FROM indicadores WHERE activo = 1 ORDER BY id_programa, orden, id_indicador");
+        $porPrograma = [];   // id_programa => ['fin'=>fila|null, 'proposito'=>fila|null, 'componentes'=>[filas]]
+        $actividadesPorPadre = []; // id_padre => [filas]
+        foreach ($indicadoresRaw as $ind) {
+            if ($ind['tipo'] === 'actividad') {
+                $actividadesPorPadre[$ind['id_padre']][] = $ind;
+            } else {
+                if (!isset($porPrograma[$ind['id_programa']])) {
+                    $porPrograma[$ind['id_programa']] = ['fin' => null, 'proposito' => null, 'componentes' => []];
+                }
+                if ($ind['tipo'] === 'fin')        $porPrograma[$ind['id_programa']]['fin'] = $ind;
+                if ($ind['tipo'] === 'proposito')  $porPrograma[$ind['id_programa']]['proposito'] = $ind;
+                if ($ind['tipo'] === 'componente') $porPrograma[$ind['id_programa']]['componentes'][] = $ind;
+            }
+        }
+
         $ejes = $obj->mostrardatos("SELECT * FROM ejes ORDER BY id_eje ASC");
 
         if (empty($ejes)) {
@@ -815,18 +839,37 @@ function ReporteConcentracion()
                 continue;
             }
 
+            // Agrupa los programas (departamentos) por su Vertiente/PP (campo "descripcion"),
+            // conservando el orden de aparición, tal como en la sectorización oficial.
+            $grupos = [];
+            foreach ($programas as $p) {
+                $clave = trim($p['descripcion']) !== '' ? $p['descripcion'] : ('__' . $p['id_programa']);
+                if (!isset($grupos[$clave])) {
+                    $grupos[$clave] = ['nombre' => trim($p['descripcion']) !== '' ? $p['descripcion'] : $p['nombre_programa'], 'programas' => []];
+                }
+                $grupos[$clave]['programas'][] = $p;
+            }
+
             $ppNum = 0;
-            foreach ($programas as $programa) {
+            foreach ($grupos as $grupo) {
                 $ppNum++;
                 echo '<div class="mb-2" style="background:#e8f3ec;color:#1a6b3c;font-weight:700;padding:6px 10px;border:1px solid #c8e2d1;">'
-                   . 'PP' . $ppNum . '.- ' . htmlspecialchars($programa['nombre_programa']) . '</div>';
+                   . 'PP' . $ppNum . '.- ' . htmlspecialchars($grupo['nombre']) . '</div>';
 
-                $fin         = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = {$programa['id_programa']} AND tipo = 'fin' AND activo = 1 LIMIT 1");
-                $proposito   = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = {$programa['id_programa']} AND tipo = 'proposito' AND activo = 1 LIMIT 1");
-                $componentes = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = {$programa['id_programa']} AND tipo = 'componente' AND activo = 1 ORDER BY orden, id_indicador");
+                // Reúne Fin / Propósito / Componentes de TODOS los departamentos de este grupo
+                $fin = null;
+                $proposito = null;
+                $componentes = [];
+                foreach ($grupo['programas'] as $p) {
+                    $datosPrograma = $porPrograma[$p['id_programa']] ?? null;
+                    if (!$datosPrograma) continue;
+                    if ($fin === null && $datosPrograma['fin']) $fin = $datosPrograma['fin'];
+                    if ($proposito === null && $datosPrograma['proposito']) $proposito = $datosPrograma['proposito'];
+                    foreach ($datosPrograma['componentes'] as $c) $componentes[] = $c;
+                }
 
-                if (empty($fin) && empty($proposito) && empty($componentes)) {
-                    echo '<p class="text-muted ms-2 mb-4">Este programa aún no tiene indicadores definidos. Ve a "Indicadores (MIR)" para agregarlos.</p>';
+                if (!$fin && !$proposito && empty($componentes)) {
+                    echo '<p class="text-muted ms-2 mb-4">Este grupo aún no tiene indicadores definidos. Ve a "Indicadores (MIR)" para agregarlos.</p>';
                     continue;
                 }
 
@@ -838,18 +881,18 @@ function ReporteConcentracion()
                 foreach ($meses as $m) echo '<th class="text-center">' . $m . '</th>';
                 echo '<th class="text-center">Total</th><th class="text-center">% Cumpl.</th></tr></thead><tbody>';
 
-                if (!empty($fin))       FilaIndicadorMIR($obj, $fin[0], $anio, true);
-                if (!empty($proposito)) FilaIndicadorMIR($obj, $proposito[0], $anio, true);
+                if ($fin)       FilaIndicadorMIR($fin, $calendario, true);
+                if ($proposito) FilaIndicadorMIR($proposito, $calendario, true);
 
                 $cNum = 0;
                 foreach ($componentes as $comp) {
                     $cNum++;
                     echo '<tr><td colspan="17" style="background:#f0f4f8;font-weight:700;">COMPONENTE ' . $cNum . '</td></tr>';
-                    FilaIndicadorMIR($obj, $comp, $anio, true);
+                    FilaIndicadorMIR($comp, $calendario, true);
 
-                    $actividades = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_padre = {$comp['id_indicador']} AND tipo = 'actividad' AND activo = 1 ORDER BY orden, id_indicador");
+                    $actividades = $actividadesPorPadre[$comp['id_indicador']] ?? [];
                     foreach ($actividades as $act) {
-                        FilaIndicadorMIR($obj, $act, $anio, false);
+                        FilaIndicadorMIR($act, $calendario, false);
                     }
                 }
 
@@ -862,17 +905,14 @@ function ReporteConcentracion()
 }
 
 
-function FilaIndicadorMIR($obj, $indicador, $anio, $negrita)
+function FilaIndicadorMIR($indicador, $calendario, $negrita)
 {
     $programado = [];
     $realizado  = [];
     $totalP = 0;
     $totalR = 0;
 
-    $datos = $obj->mostrardatos("SELECT mes, programado, realizado FROM indicador_calendario
-                                  WHERE id_indicador = {$indicador['id_indicador']} AND anio = $anio");
-    $porMes = [];
-    foreach ($datos as $d) $porMes[(int)$d['mes']] = $d;
+    $porMes = $calendario[$indicador['id_indicador']] ?? [];
 
     for ($m = 1; $m <= 12; $m++) {
         $p = isset($porMes[$m]) ? (float)$porMes[$m]['programado'] : 0;
