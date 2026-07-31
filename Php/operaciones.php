@@ -359,7 +359,6 @@ function InfoProgramas()
 function InfoMetas()
 {
     global $obj;
-    ob_clean();
     $sql = "SELECT m.*, p.nombre_programa, e.nombre_eje
             FROM metas m
             INNER JOIN programas p ON m.id_programa = p.id_programa
