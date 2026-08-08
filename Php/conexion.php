@@ -6,6 +6,11 @@ class OperacionesBd {
     private $password;
     private $puerto;
 
+    // Una sola conexión compartida por petición. Antes cada método abría su
+    // propia conexión y no la cerraba: guardar un calendario llegaba a abrir
+    // ~24 conexiones a la vez y el servidor de base de datos las rechazaba.
+    private static $conexionCompartida = null;
+
     public function __construct() {
         // En producción (Render) estas variables se configuran como variables de entorno.
         // En local (XAMPP), si no existen, cae en los valores de siempre.
@@ -18,43 +23,61 @@ class OperacionesBd {
     }
 
     public function conexion() {
-        $conexion = mysqli_connect($this->servidor, $this->usuario, $this->password, $this->bd, (int)$this->puerto);
-        if (!$conexion) {
-            die("Error en la conexión: " . mysqli_connect_error());
+        if (self::$conexionCompartida instanceof mysqli) {
+            return self::$conexionCompartida;
         }
+
+        // Desde PHP 8 mysqli lanza excepción en vez de devolver false, y sin
+        // capturarla la respuesta era un 500 con el cuerpo vacío.
+        try {
+            $conexion = mysqli_connect($this->servidor, $this->usuario, $this->password, $this->bd, (int)$this->puerto);
+        } catch (mysqli_sql_exception $e) {
+            $conexion = false;
+            $error    = $e->getMessage();
+        }
+
+        if (!$conexion) {
+            http_response_code(500);
+            die("Error en la conexión: " . ($error ?? mysqli_connect_error()));
+        }
+
         mysqli_set_charset($conexion, 'utf8mb4');
+        self::$conexionCompartida = $conexion;
         return $conexion;
     }
 
     public function guardardatos($sql) {
-        $obj     = new OperacionesBd;
-        $conexion = $obj->conexion();
+        $conexion = $this->conexion();
         mysqli_query($conexion, $sql);
     }
 
     public function mostrardatos($sql) {
-        $obj      = new OperacionesBd;
-        $conexion = $obj->conexion();
+        $conexion  = $this->conexion();
         $resultado = mysqli_query($conexion, $sql);
+        // Si la consulta falla, mysqli_query devuelve false y mysqli_fetch_all
+        // lanzaría un TypeError que tumba toda la petición.
+        if (!$resultado) {
+            return [];
+        }
         return mysqli_fetch_all($resultado, MYSQLI_ASSOC);
     }
 
     public function mostrarunregistro($sql) {
-        $obj       = new OperacionesBd;
-        $conexion  = $obj->conexion();
+        $conexion  = $this->conexion();
         $resultado = mysqli_query($conexion, $sql);
+        if (!$resultado) {
+            return null;
+        }
         return mysqli_fetch_assoc($resultado);
     }
 
     public function eliminardatos($sql) {
-        $obj      = new OperacionesBd;
-        $conexion = $obj->conexion();
+        $conexion = $this->conexion();
         mysqli_query($conexion, $sql);
     }
 
     public function actualizadatos($sql) {
-        $obj      = new OperacionesBd;
-        $conexion = $obj->conexion();
+        $conexion = $this->conexion();
         mysqli_query($conexion, $sql);
     }
 
