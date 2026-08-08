@@ -1,6 +1,6 @@
 <?php
 
-$idopc = $_GET['idopc'];
+$idopc = $_GET['idopc'] ?? '';
 
 switch ($idopc) {
 
@@ -89,7 +89,7 @@ function FormularioEjes()
 
 function FormularioEjesActualizacion($resultado)
 {
-    $idr = $_GET['idr'];
+    $idr = $_GET['idr'] ?? 0;
     foreach ($resultado as $columna) {
         $id        = $columna['id_eje'];
         $nombre_eje = $columna['nombre_eje'];
@@ -193,7 +193,7 @@ function FormularioProgramas()
 function FormularioProgramasActualizacion($resultado)
 {
     global $obj;
-    $idr = $_GET['idr'];
+    $idr = $_GET['idr'] ?? 0;
     foreach ($resultado as $columna) {
         $id_eje          = $columna['id_eje'];
         $nombre_programa = $columna['nombre_programa'];
@@ -370,7 +370,7 @@ function FormularioMetas()
 function FormularioMetasActualizacion($resultado)
 {
     global $obj;
-    $idr = $_GET['idr'];
+    $idr = $_GET['idr'] ?? 0;
     foreach ($resultado as $columna) {
         $id_programa        = $columna['id_programa'];
         $actividad          = $columna['actividad'];
@@ -538,7 +538,7 @@ function FormularioUsuarios()
 
 function FormularioUsuariosActualizacion($resultado)
 {
-    $idr = $_GET['idr'];
+    $idr = $_GET['idr'] ?? 0;
     foreach ($resultado as $columna) {
         $nombre  = $columna['nombre'];
         $usuario = $columna['usuario'];

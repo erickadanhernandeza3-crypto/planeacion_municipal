@@ -1,7 +1,7 @@
 <?php
 
 include('vistas.php');
-$idopc = $_GET['idopc'];
+$idopc = $_GET['idopc'] ?? '';
 
 switch ($idopc) {
 
@@ -83,8 +83,8 @@ switch ($idopc) {
 
 function crudEjes()
 {
-    $ops = $_GET['ops'];
-    $idr = $_GET['idr'];
+    $ops = $_GET['ops'] ?? '';
+    $idr = $_GET['idr'] ?? 0;
 
     if ($ops == "Insert") {
         global $obj;
@@ -127,8 +127,8 @@ function crudEjes()
 
 function crudProgramas()
 {
-    $ops = $_GET['ops'];
-    $idr = $_GET['idr'];
+    $ops = $_GET['ops'] ?? '';
+    $idr = $_GET['idr'] ?? 0;
 
     if ($ops == "Insert") {
         global $obj;
@@ -176,8 +176,8 @@ function crudProgramas()
 
 function crudMetas()
 {
-    $ops = $_GET['ops'];
-    $idr = $_GET['idr'];
+    $ops = $_GET['ops'] ?? '';
+    $idr = $_GET['idr'] ?? 0;
 
     if ($ops == "Insert") {
         global $obj;
@@ -274,8 +274,8 @@ function crudMetas()
 
 function crudUsuarios()
 {
-    $ops = $_GET['ops'];
-    $idr = $_GET['idr'];
+    $ops = $_GET['ops'] ?? '';
+    $idr = $_GET['idr'] ?? 0;
 
     if ($ops == "Insert") {
         global $obj;
@@ -573,7 +573,7 @@ function ProgramasPorEje()
 {
     // Devuelve en JSON los programas del eje seleccionado
     global $obj;
-    $id_eje = (int)$_GET['idr'];
+    $id_eje = (int)($_GET['idr'] ?? 0);
     $sql    = "SELECT id_programa, nombre_programa FROM programas WHERE id_eje = $id_eje ORDER BY id_programa ASC";
     $datos  = $obj->mostrardatos($sql);
     header('Content-Type: application/json');
@@ -588,7 +588,7 @@ function IndicadoresPrograma()
 {
     // Devuelve en JSON el árbol de indicadores de un programa: fin, propósito y componentes con sus actividades
     global $obj;
-    $id_programa = (int)$_GET['idr'];
+    $id_programa = (int)($_GET['idr'] ?? 0);
 
     $resultado = ['fin' => null, 'proposito' => null, 'componentes' => []];
 
@@ -613,7 +613,7 @@ function IndicadoresPrograma()
 function crudIndicadores()
 {
     global $obj;
-    $ops = $_GET['ops'];
+    $ops = $_GET['ops'] ?? '';
     header('Content-Type: application/json');
 
     if ($ops == 'InsertIndicador') {
@@ -646,7 +646,7 @@ function crudIndicadores()
     }
 
     if ($ops == 'DeleteIndicador') {
-        $idr = (int)$_GET['idr'];
+        $idr = (int)($_GET['idr'] ?? 0);
         $obj->eliminardatos("DELETE FROM indicadores WHERE id_indicador = $idr");
         echo json_encode(['ok' => true]);
         exit;
@@ -658,7 +658,7 @@ function formCalendario()
 {
     // Devuelve en JSON los 12 meses (programado/realizado) de un indicador para un año dado
     global $obj;
-    $id_indicador = (int)$_GET['idr'];
+    $id_indicador = (int)($_GET['idr'] ?? 0);
     $anio = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)date('Y');
 
     $datos = $obj->mostrardatos("SELECT mes, programado, realizado FROM indicador_calendario WHERE id_indicador = $id_indicador AND anio = $anio");

@@ -2,7 +2,7 @@
 include("conexion.php");
 $obj = new OperacionesBd;
 
-$idopc = $_GET['idopc'];
+$idopc = $_GET['idopc'] ?? '';
 
 switch ($idopc) {
 
