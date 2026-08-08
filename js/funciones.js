@@ -33,6 +33,9 @@ function buscar(idopc, iddiv, ops, idr, msg) {
         case 'DatosGraficaEjes':
           graficaEjesBar('DatosGraficaEjesBar');
           graficaDona('DatosGraficaEstados');
+          graficaPresupuesto('DatosGraficaPresupuesto');
+          graficaAvanceProgramas('DatosGraficaAvanceProgramas');
+          graficaCalendario('DatosGraficaCalendario');
           break;
       }
     }
@@ -555,6 +558,7 @@ function graficaEjesBar(idopc) {
           labels: data.ejes,
           datasets: [
             { label: 'Cumplidas',  data: data.cumplidas,  backgroundColor: '#2fa86a', borderRadius: 5 },
+            { label: 'En Proceso', data: data.enproceso,  backgroundColor: '#c89b00', borderRadius: 5 },
             { label: 'Pendientes', data: data.pendientes, backgroundColor: '#c0392b', borderRadius: 5 }
           ]
         },
@@ -576,6 +580,91 @@ function graficaDona(idopc) {
           datasets: [{ data: data.totales, backgroundColor: ['#2fa86a','#c89b00','#c0392b'], borderWidth: 2 }]
         },
         options: { responsive: true, cutout: '65%', plugins: { legend: { position: 'bottom' } } }
+      });
+    });
+}
+
+// Formatea un número como moneda mexicana para tooltips y ejes.
+function formatoPesos(valor) {
+  return '$' + Number(valor).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function graficaPresupuesto(idopc) {
+  fetch('Php/controlador.php?idopc=' + idopc)
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById('graficaPresupuesto');
+      if (!ctx) return;
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.ejes,
+          datasets: [
+            { label: 'Asignado', data: data.asignado, backgroundColor: '#0A2647', borderRadius: 5 },
+            { label: 'Ejercido', data: data.ejercido, backgroundColor: '#D4AF37', borderRadius: 5 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: { callbacks: { label: c => c.dataset.label + ': ' + formatoPesos(c.parsed.y) } }
+          },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => formatoPesos(v) } } }
+        }
+      });
+    });
+}
+
+function graficaAvanceProgramas(idopc) {
+  fetch('Php/controlador.php?idopc=' + idopc)
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById('graficaAvanceProgramas');
+      if (!ctx) return;
+      // Verde si va al corriente, ámbar si va a medias, rojo si está atrasado.
+      const colores = data.avances.map(a => a >= 80 ? '#2fa86a' : (a >= 40 ? '#c89b00' : '#c0392b'));
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.programas,
+          datasets: [{ label: '% de avance', data: data.avances, backgroundColor: colores, borderRadius: 5 }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => c.parsed.x + '% de avance' } }
+          },
+          scales: { x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } }
+        }
+      });
+    });
+}
+
+function graficaCalendario(idopc) {
+  fetch('Php/controlador.php?idopc=' + idopc)
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById('graficaCalendario');
+      if (!ctx) return;
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
+          datasets: [
+            { label: 'Programado ' + data.anio, data: data.programado, borderColor: '#0A2647',
+              backgroundColor: 'rgba(10,38,71,.1)', tension: .3, fill: true, pointRadius: 4 },
+            { label: 'Realizado ' + data.anio, data: data.realizado, borderColor: '#2fa86a',
+              backgroundColor: 'rgba(47,168,106,.15)', tension: .3, fill: true, pointRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: { y: { beginAtZero: true } }
+        }
       });
     });
 }

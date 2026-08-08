@@ -34,6 +34,9 @@ switch ($idopc) {
     case 'DatosUsuarios':
     case 'DatosGraficaEstados':
     case 'DatosGraficaEjesBar':
+    case 'DatosGraficaPresupuesto':
+    case 'DatosGraficaAvanceProgramas':
+    case 'DatosGraficaCalendario':
     case 'DatosProgramasPorEje':
     case 'OpsIndicadores':
     case 'IndicadoresPrograma':

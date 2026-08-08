@@ -45,6 +45,18 @@ switch ($idopc) {
         DatosGraficaEjesBar();
         break;
 
+    case 'DatosGraficaPresupuesto':
+        DatosGraficaPresupuesto();
+        break;
+
+    case 'DatosGraficaAvanceProgramas':
+        DatosGraficaAvanceProgramas();
+        break;
+
+    case 'DatosGraficaCalendario':
+        DatosGraficaCalendario();
+        break;
+
     case 'DatosProgramasPorEje':
         ProgramasPorEje();
         break;
@@ -433,23 +445,126 @@ function DatosGraficaEjesBar()
     global $obj;
     $sql = "SELECT e.nombre_eje,
                    COUNT(m.id_meta) AS total,
-                   SUM(CASE WHEN m.estado = 'Terminado' THEN 1 ELSE 0 END) AS cumplidas,
-                   SUM(CASE WHEN m.estado = 'Pendiente' THEN 1 ELSE 0 END) AS pendientes
+                   SUM(CASE WHEN m.estado = 'Terminado'  THEN 1 ELSE 0 END) AS cumplidas,
+                   SUM(CASE WHEN m.estado = 'En Proceso' THEN 1 ELSE 0 END) AS enproceso,
+                   SUM(CASE WHEN m.estado = 'Pendiente'  THEN 1 ELSE 0 END) AS pendientes
             FROM ejes e
             LEFT JOIN programas p ON e.id_eje = p.id_eje
             LEFT JOIN metas m ON p.id_programa = m.id_programa
             GROUP BY e.id_eje, e.nombre_eje
             ORDER BY e.id_eje";
     $datos = $obj->mostrardatos($sql);
-    $ejes      = [];
-    $cumplidas = [];
+    $ejes       = [];
+    $cumplidas  = [];
+    $enproceso  = [];
     $pendientes = [];
     foreach ($datos as $fila) {
         $ejes[]       = $fila['nombre_eje'];
         $cumplidas[]  = (int)$fila['cumplidas'];
+        $enproceso[]  = (int)$fila['enproceso'];
         $pendientes[] = (int)$fila['pendientes'];
     }
-    echo json_encode(['ejes' => $ejes, 'cumplidas' => $cumplidas, 'pendientes' => $pendientes]);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ejes'       => $ejes,
+        'cumplidas'  => $cumplidas,
+        'enproceso'  => $enproceso,
+        'pendientes' => $pendientes
+    ]);
+    exit;
+}
+
+
+/**
+ * Presupuesto asignado vs ejercido por eje estratégico.
+ */
+function DatosGraficaPresupuesto()
+{
+    global $obj;
+    $sql = "SELECT e.nombre_eje,
+                   COALESCE(SUM(m.presupuesto_asignado), 0) AS asignado,
+                   COALESCE(SUM(m.presupuesto_ejercido), 0) AS ejercido
+            FROM ejes e
+            LEFT JOIN programas p ON e.id_eje = p.id_eje
+            LEFT JOIN metas m ON p.id_programa = m.id_programa
+            GROUP BY e.id_eje, e.nombre_eje
+            ORDER BY e.id_eje";
+    $datos = $obj->mostrardatos($sql);
+    $ejes     = [];
+    $asignado = [];
+    $ejercido = [];
+    foreach ($datos as $fila) {
+        $ejes[]     = $fila['nombre_eje'];
+        $asignado[] = (float)$fila['asignado'];
+        $ejercido[] = (float)$fila['ejercido'];
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['ejes' => $ejes, 'asignado' => $asignado, 'ejercido' => $ejercido]);
+    exit;
+}
+
+
+/**
+ * % de avance promedio por programa (barras horizontales).
+ * El avance de cada meta se limita a 100% para que una meta rebasada
+ * no distorsione el promedio del programa.
+ */
+function DatosGraficaAvanceProgramas()
+{
+    global $obj;
+    $sql = "SELECT p.nombre_programa,
+                   AVG(LEAST(m.meta_alcanzada / NULLIF(m.meta_programada, 0) * 100, 100)) AS avance
+            FROM programas p
+            INNER JOIN metas m ON p.id_programa = m.id_programa
+            GROUP BY p.id_programa, p.nombre_programa
+            HAVING avance IS NOT NULL
+            ORDER BY avance DESC";
+    $datos = $obj->mostrardatos($sql);
+    $programas = [];
+    $avances   = [];
+    foreach ($datos as $fila) {
+        $programas[] = $fila['nombre_programa'];
+        $avances[]   = round((float)$fila['avance'], 1);
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['programas' => $programas, 'avances' => $avances]);
+    exit;
+}
+
+
+/**
+ * Calendario mensual del año en curso: programado vs realizado
+ * (suma de todos los indicadores MIR).
+ */
+function DatosGraficaCalendario()
+{
+    global $obj;
+    $anio = (int)date('Y');
+    $sql  = "SELECT mes,
+                    SUM(programado) AS programado,
+                    SUM(realizado)  AS realizado
+             FROM indicador_calendario
+             WHERE anio = $anio
+             GROUP BY mes
+             ORDER BY mes";
+    $datos = $obj->mostrardatos($sql);
+
+    // Se rellenan los 12 meses para que la línea no se corte donde no hay captura.
+    $programado = array_fill(1, 12, 0);
+    $realizado  = array_fill(1, 12, 0);
+    foreach ($datos as $fila) {
+        $mes = (int)$fila['mes'];
+        if ($mes >= 1 && $mes <= 12) {
+            $programado[$mes] = (float)$fila['programado'];
+            $realizado[$mes]  = (float)$fila['realizado'];
+        }
+    }
+    header('Content-Type: application/json');
+    echo json_encode([
+        'anio'       => $anio,
+        'programado' => array_values($programado),
+        'realizado'  => array_values($realizado)
+    ]);
     exit;
 }
 

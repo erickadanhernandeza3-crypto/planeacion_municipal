@@ -729,6 +729,39 @@ function GraficaEjes()
             <canvas id="graficaDona"></canvas>
         </div>
     </div>
+
+    <hr class="my-4">
+
+    <h5 class="fw-bold mb-3" style="color:#0A2647;">
+        <i class="bi bi-cash-coin me-2"></i>Presupuesto Asignado vs Ejercido por Eje
+    </h5>
+    <div class="row mb-2">
+        <div class="col-12">
+            <canvas id="graficaPresupuesto"></canvas>
+        </div>
+    </div>
+
+    <hr class="my-4">
+
+    <h5 class="fw-bold mb-3" style="color:#0A2647;">
+        <i class="bi bi-list-ol me-2"></i>% de Avance por Programa
+    </h5>
+    <div class="row mb-2">
+        <div class="col-12">
+            <canvas id="graficaAvanceProgramas"></canvas>
+        </div>
+    </div>
+
+    <hr class="my-4">
+
+    <h5 class="fw-bold mb-3" style="color:#0A2647;">
+        <i class="bi bi-graph-up me-2"></i>Calendario Mensual: Programado vs Realizado
+    </h5>
+    <div class="row mb-4">
+        <div class="col-12">
+            <canvas id="graficaCalendario"></canvas>
+        </div>
+    </div>
 <?php
 }
 
