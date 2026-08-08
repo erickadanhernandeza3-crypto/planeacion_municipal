@@ -86,6 +86,24 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
             </a>
           </li>
 
+          <li class="nav-item w-100 mt-2">
+            <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Indicadores</small>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:buscar('PanelIndicadores',1,'',0,0)"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-bullseye fs-5"></i>
+              <span class="d-none d-sm-inline">Indicadores (MIR)</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:buscar('ReporteConcentracion',1,'',0,0)"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-calendar3-range fs-5"></i>
+              <span class="d-none d-sm-inline">Concentración de Calendarios</span>
+            </a>
+          </li>
+
         </ul>
 
         <hr class="w-100 border-secondary">
