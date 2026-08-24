@@ -1,4 +1,10 @@
 <?php
+
+// Palabra de acceso para la vista pública de solo lectura "Avance del Proyecto"
+// (avance.php). No es una cuenta de usuario ni reemplaza el login: solo evita
+// que cualquiera que adivine la URL entre sin conocer la clave.
+define('CLAVE_AVANCE_PROYECTO', 'Tamazunchale2026');
+
 class OperacionesBd {
     private $servidor;
     private $bd;

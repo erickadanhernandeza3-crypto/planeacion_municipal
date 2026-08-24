@@ -372,8 +372,10 @@ function mensajes(opcion) {
 
 
 /////////////////////// DataTables ///////////////////////
-function inicializarDataTable(selector, idopc, columnas) {
-  const ajaxUrl = 'Php/controlador.php?idopc=' + idopc;
+// "extra" es opcional: parámetros adicionales ya armados como querystring,
+// por ejemplo '&clave=...' (lo usa avance.php para mandar la clave de acceso).
+function inicializarDataTable(selector, idopc, columnas, extra) {
+  const ajaxUrl = 'Php/controlador.php?idopc=' + idopc + (extra || '');
   if ($.fn.DataTable.isDataTable(selector)) {
     $(selector).DataTable().destroy();
   }
@@ -666,5 +668,37 @@ function graficaCalendario(idopc) {
           scales: { y: { beginAtZero: true } }
         }
       });
+    });
+}
+
+
+/////////////////////// Avance del Proyecto (vista pública de solo lectura) ///////////////////////
+
+// ─── AVANCE ───
+const columnasAvance = [
+  { "data": "nombre_eje" },
+  { "data": "nombre_programa" },
+  {
+    "data": "estatus",
+    "render": function (estatus) {
+      const c = { 'Completo': '#1a6b3c:#d4f4e2', 'En proceso': '#7d5a00:#fff3cd', 'Sin iniciar': '#555:#e9ecef' };
+      const [text, bg] = (c[estatus] || '#333:#eee').split(':');
+      return `<span style="background:${bg};color:${text};font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${estatus}</span>`;
+    }
+  }
+];
+
+// Llena las tarjetas resumen de arriba de avance.php.
+function cargarResumenAvance(clave) {
+  fetch('Php/controlador.php?idopc=ResumenAvanceProyecto&clave=' + encodeURIComponent(clave))
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('resTotalEjes').textContent      = data.total_ejes;
+      document.getElementById('resTotalProgramas').textContent = data.total_programas;
+      document.getElementById('resCompletos').textContent      = data.completos;
+      document.getElementById('resEnProceso').textContent      = data.en_proceso;
+      document.getElementById('resSinIniciar').textContent     = data.sin_iniciar;
+      document.getElementById('resUltimaActualizacion').textContent =
+        data.ultima_actualizacion ? data.ultima_actualizacion : 'Sin capturas registradas todavía';
     });
 }

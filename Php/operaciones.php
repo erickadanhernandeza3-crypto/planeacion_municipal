@@ -61,6 +61,14 @@ switch ($idopc) {
         ProgramasPorEje();
         break;
 
+    case 'ResumenAvanceProyecto':
+        ResumenAvanceProyecto();
+        break;
+
+    case 'DatosAvanceProgramas':
+        DatosAvanceProgramas();
+        break;
+
     case 'OpsIndicadores':
         crudIndicadores();
         break;
@@ -704,5 +712,105 @@ function guardarCalendario()
 
     header('Content-Type: application/json');
     echo json_encode(['ok' => true]);
+    exit;
+}
+
+
+////////////////////// AVANCE DEL PROYECTO (vista pública de solo lectura) //////////////////////
+
+/**
+ * Corta la ejecución con un 403 si la clave enviada no coincide con la
+ * clave de acceso de avance.php. La usan los dos endpoints de abajo para
+ * que nadie pueda leer los datos llamando directo a controlador.php sin
+ * conocer la clave.
+ */
+function validarClaveAvance()
+{
+    $clave = $_GET['clave'] ?? '';
+    if ($clave !== CLAVE_AVANCE_PROYECTO) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Clave de acceso incorrecta.']);
+        exit;
+    }
+}
+
+function ResumenAvanceProyecto()
+{
+    validarClaveAvance();
+    global $obj;
+
+    $totalEjes = (int)($obj->mostrarunregistro("SELECT COUNT(*) AS total FROM ejes")['total'] ?? 0);
+
+    // Un programa se considera:
+    //   Completo    -> tiene al menos una meta capturada y todas están 'Terminado'
+    //   En proceso  -> tiene al menos una meta capturada, pero no todas 'Terminado'
+    //   Sin iniciar -> todavía no se le ha capturado ninguna meta
+    $sql = "SELECT
+                COUNT(*) AS total_programas,
+                SUM(CASE WHEN metas_totales = 0 THEN 1 ELSE 0 END) AS sin_iniciar,
+                SUM(CASE WHEN metas_totales > 0 AND metas_totales = metas_terminadas THEN 1 ELSE 0 END) AS completos,
+                SUM(CASE WHEN metas_totales > 0 AND metas_totales > metas_terminadas THEN 1 ELSE 0 END) AS en_proceso
+            FROM (
+                SELECT p.id_programa,
+                       COUNT(m.id_meta) AS metas_totales,
+                       SUM(CASE WHEN m.estado = 'Terminado' THEN 1 ELSE 0 END) AS metas_terminadas
+                FROM programas p
+                LEFT JOIN metas m ON m.id_programa = p.id_programa
+                GROUP BY p.id_programa
+            ) AS resumen_por_programa";
+    $resumen = $obj->mostrarunregistro($sql);
+
+    $ultima = $obj->mostrarunregistro("SELECT MAX(actualizado_en) AS fecha FROM metas")['fecha'] ?? null;
+
+    header('Content-Type: application/json');
+    echo json_encode([
+        'total_ejes'           => $totalEjes,
+        'total_programas'      => (int)($resumen['total_programas'] ?? 0),
+        'completos'            => (int)($resumen['completos'] ?? 0),
+        'en_proceso'           => (int)($resumen['en_proceso'] ?? 0),
+        'sin_iniciar'          => (int)($resumen['sin_iniciar'] ?? 0),
+        'ultima_actualizacion' => $ultima,
+    ]);
+    exit;
+}
+
+function DatosAvanceProgramas()
+{
+    validarClaveAvance();
+    global $obj;
+
+    $sql = "SELECT e.nombre_eje, p.nombre_programa,
+                   COUNT(m.id_meta) AS metas_totales,
+                   SUM(CASE WHEN m.estado = 'Terminado' THEN 1 ELSE 0 END) AS metas_terminadas
+            FROM programas p
+            INNER JOIN ejes e ON e.id_eje = p.id_eje
+            LEFT JOIN metas m ON m.id_programa = p.id_programa
+            GROUP BY p.id_programa, e.nombre_eje, p.nombre_programa
+            ORDER BY e.id_eje, p.nombre_programa";
+    $datos = $obj->mostrardatos($sql);
+
+    $lista = [];
+    foreach ($datos as $fila) {
+        $totales    = (int)$fila['metas_totales'];
+        $terminadas = (int)$fila['metas_terminadas'];
+
+        if ($totales === 0) {
+            $estatus = 'Sin iniciar';
+        } elseif ($terminadas === $totales) {
+            $estatus = 'Completo';
+        } else {
+            $estatus = 'En proceso';
+        }
+
+        $lista[] = [
+            'nombre_eje'      => $fila['nombre_eje'],
+            'nombre_programa' => $fila['nombre_programa'],
+            'estatus'         => $estatus,
+        ];
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode(['data' => $lista]);
     exit;
 }

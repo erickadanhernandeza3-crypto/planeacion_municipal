@@ -42,6 +42,8 @@ switch ($idopc) {
     case 'IndicadoresPrograma':
     case 'FormCalendario':
     case 'GuardarCalendario':
+    case 'ResumenAvanceProyecto':
+    case 'DatosAvanceProgramas':
         $obj->operaciones_bd();
         break;
 }
