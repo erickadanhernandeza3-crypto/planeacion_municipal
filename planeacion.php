@@ -23,6 +23,15 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
+  <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Seguimiento) -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="js/planeacion_extra.js?v=<?php echo filemtime(__DIR__ . '/js/planeacion_extra.js'); ?>"></script>
   <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
@@ -104,6 +113,42 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
             </a>
           </li>
 
+          <li class="nav-item w-100 mt-2">
+            <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Seguimiento</small>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirSeguimiento()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-speedometer2 fs-5"></i>
+              <span class="d-none d-sm-inline">Seguimiento y Avances</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirAlertas()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-alarm fs-5"></i>
+              <span class="d-none d-sm-inline">Alertas de Vencimiento</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirReporte()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-printer fs-5"></i>
+              <span class="d-none d-sm-inline">Reporte por Eje</span>
+            </a>
+          </li>
+
+          <li class="nav-item w-100 mt-2">
+            <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Mi cuenta</small>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirCambiarContrasena()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-key fs-5"></i>
+              <span class="d-none d-sm-inline">Cambiar Contraseña</span>
+            </a>
+          </li>
+
         </ul>
 
         <hr class="w-100 border-secondary">
@@ -171,6 +216,9 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
           </div>
         </div>
 
+        <!-- Aviso de metas vencidas / por vencer (lo llena cargarAvisoAlertas) -->
+        <div id="avisoAlertas"></div>
+
         <p class="text-muted" style="font-size:.85rem;">
           <i class="bi bi-arrow-left-circle me-1"></i>
           Usa el menú lateral para registrar metas, ver el histórico o la evaluación visual.
@@ -201,6 +249,9 @@ fetch('Php/controlador.php?idopc=DatosGraficaEstados&ops=&idr=0&msg=0')
     document.getElementById('kpiEnProceso').textContent = proceso;
     document.getElementById('kpiPendientes').textContent = pendientes;
   }).catch(() => {});
+
+// Aviso de alertas de vencimiento
+cargarAvisoAlertas();
 </script>
 
 </body>

@@ -46,4 +46,20 @@ switch ($idopc) {
     case 'DatosAvanceProgramas':
         $obj->operaciones_bd();
         break;
+
+    // ── MÓDULOS NUEVOS DEL PANEL DE PLANEACIÓN (solo rol planeacion) ──
+    case 'PlanAlertas':
+    case 'PlanResumenAlertas':
+    case 'PlanSeguimiento':
+    case 'PlanDatosSeguimiento':
+    case 'PlanFrmAvance':
+    case 'PlanGuardarAvance':
+    case 'PlanHistorialAvances':
+    case 'PlanFichaMeta':
+    case 'PlanFrmReporte':
+    case 'PlanReporteEje':
+    case 'PlanFrmContrasena':
+    case 'PlanGuardarContrasena':
+        include('planeacion_extra.php');
+        break;
 }
