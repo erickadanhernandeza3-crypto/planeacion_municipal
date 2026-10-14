@@ -69,6 +69,17 @@ switch ($idopc) {
     case 'PlanGuardarContrasena':
     case 'PlanTrimestral':
     case 'PlanDatosTrimestral':
+    case 'PlanFisicoFinanciero':
+    case 'PlanDatosFisicoFinanciero':
+    case 'PlanDependencias':
+    case 'PlanDatosDependencias':
+    case 'PlanMetasDependencia':
+    case 'PlanCalendario':
+    case 'PlanDatosCalendario':
+    case 'PlanObservaciones':
+    case 'PlanGuardarObservacion':
+    case 'PlanCumplirAcuerdo':
+    case 'PlanEliminarObservacion':
         include('planeacion_extra.php');
         break;
 

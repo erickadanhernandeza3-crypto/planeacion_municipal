@@ -157,6 +157,31 @@ if (!revisarInactividad()) {
             </a>
           </li>
           <li class="nav-item w-100">
+            <a href="javascript:abrirCalendario()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-calendar-event fs-5"></i>
+              <span class="d-none d-sm-inline">Calendario de Vencimientos</span>
+            </a>
+          </li>
+
+          <li class="nav-item w-100 mt-2">
+            <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Control y Evaluación</small>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirFisicoFinanciero()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-cash-coin fs-5"></i>
+              <span class="d-none d-sm-inline">Físico vs Financiero</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirDependencias()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-building fs-5"></i>
+              <span class="d-none d-sm-inline">Por Dependencia</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
             <a href="javascript:abrirReporte()"
                class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
               <i class="bi bi-printer fs-5"></i>

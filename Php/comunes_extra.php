@@ -21,6 +21,9 @@ const OPCIONES_SOLO_ADMIN = [
 // Opciones públicas: las usa avance.php, que ya valida su propia clave.
 const OPCIONES_PUBLICAS = ['ResumenAvanceProyecto', 'DatosAvanceProgramas'];
 
+// Tipos de observación por meta (Php/planeacion_extra.php, tabla observaciones_meta).
+const TIPOS_OBSERVACION = ['Observación', 'Acuerdo', 'Problema'];
+
 
 ////////////////////// SEGURIDAD //////////////////////
 

@@ -41,6 +41,17 @@ switch ($idopc) {
     case 'PlanGuardarContrasena':  GuardarContrasena();       break;
     case 'PlanTrimestral':         VistaTrimestral('PlanDatosTrimestral'); break;
     case 'PlanDatosTrimestral':    responderJson(datosTrimestrales((int)($_GET['anio'] ?? date('Y')))); break;
+    case 'PlanFisicoFinanciero':      VistaFisicoFinanciero();      break;
+    case 'PlanDatosFisicoFinanciero': DatosFisicoFinanciero();      break;
+    case 'PlanDependencias':          VistaDependencias();          break;
+    case 'PlanDatosDependencias':     DatosDependencias();          break;
+    case 'PlanMetasDependencia':      MetasDependencia();           break;
+    case 'PlanCalendario':            VistaCalendario();            break;
+    case 'PlanDatosCalendario':       DatosCalendario();            break;
+    case 'PlanObservaciones':         ModalObservaciones();         break;
+    case 'PlanGuardarObservacion':    GuardarObservacion();         break;
+    case 'PlanCumplirAcuerdo':        CumplirAcuerdo();             break;
+    case 'PlanEliminarObservacion':   EliminarObservacion();        break;
 }
 
 
@@ -117,6 +128,7 @@ function VistaAlertas()
     <?php
     TablaAlertas('Vencidas', 'bi-exclamation-octagon', '#c0392b', $vencidas, true);
     TablaAlertas('Por vencer', 'bi-hourglass-split', '#c89b00', $porVencer, false);
+    TablaAcuerdosPendientes();
 }
 
 function TablaAlertas($titulo, $icono, $color, $metas, $esVencida)
@@ -172,7 +184,8 @@ function botonesAccionMeta($id_meta)
     $id = (int)$id_meta;
     return '<a href="#" onclick="abrirFormAvance(' . $id . ');return false;" class="fs-5 me-2" title="Registrar avance"><i class="bi bi-plus-circle-fill" style="color:#2fa86a;"></i></a>'
          . '<a href="#" onclick="abrirHistorial(' . $id . ');return false;" class="fs-5 me-2" title="Historial de avances"><i class="bi bi-clock-history" style="color:#0A2647;"></i></a>'
-         . '<a href="#" onclick="abrirFicha(' . $id . ');return false;" class="fs-5" title="Ficha de la meta"><i class="bi bi-eye-fill" style="color:#c89b00;"></i></a>';
+         . '<a href="#" onclick="abrirFicha(' . $id . ');return false;" class="fs-5 me-2" title="Ficha de la meta"><i class="bi bi-eye-fill" style="color:#c89b00;"></i></a>'
+         . '<a href="#" onclick="abrirObservaciones(' . $id . ');return false;" class="fs-5" title="Observaciones y acuerdos"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a>';
 }
 
 
@@ -536,6 +549,9 @@ function FichaMeta()
     <h6 class="fw-bold mb-3" style="color:#0A2647;"><i class="bi bi-clock-history me-2"></i>Historial de avances</h6>
     <?php LineaTiempoAvances($id_meta); ?>
     <button class="btn btn-primary btn-sm mt-2" onclick="abrirFormAvance(<?= (int)$id_meta ?>)"><i class="bi bi-plus-circle me-1"></i>Registrar avance</button>
+
+    <hr>
+    <?php SeccionObservaciones($id_meta); ?>
 <?php
 }
 
@@ -739,4 +755,557 @@ function GuardarContrasena()
         // La contraseña ya se cambió; si la bitácora falla no se avisa como error.
     }
     responderJson(['ok' => true, 'mensaje' => 'Contraseña actualizada. Úsala la próxima vez que inicies sesión.']);
+}
+
+
+
+////////////////////// 10. AVANCE FÍSICO VS FINANCIERO //////////////////////
+
+/*
+ * Físico     = lo realizado:  alcanzada / programada (máximo 100%)
+ * Financiero = lo gastado:    presupuesto ejercido / asignado (puede pasar de 100% = sobreejercicio)
+ * Si se gastó bastante más de lo que se avanzó, es una señal de alerta para Contraloría.
+ */
+function clasificarFisicoFinanciero($fisico, $financiero)
+{
+    if ($financiero === null)        return 'Sin presupuesto';
+    if ($financiero > 100)           return 'Sobreejercicio';
+    if ($financiero - $fisico > 25)  return 'Gasto adelantado';
+    if ($fisico - $financiero > 25)  return 'Gasto rezagado';
+    return 'Equilibrado';
+}
+
+function VistaFisicoFinanciero()
+{
+    $ejes = consultarPreparado("SELECT id_eje, nombre_eje FROM ejes ORDER BY nombre_eje ASC");
+?>
+    <h5 class="fw-bold mb-1" style="color:#0A2647;">
+        <i class="bi bi-cash-coin me-2"></i>Avance Físico vs Financiero
+    </h5>
+    <p class="text-muted mb-3" style="font-size:.85rem;">
+        Compara lo que se ha <strong>realizado</strong> (avance físico) contra lo que se ha <strong>gastado</strong> (avance financiero) en cada meta.
+    </p>
+
+    <div class="d-flex align-items-end gap-2 mb-3">
+        <div>
+            <label class="form-label fw-semibold" style="font-size:.8rem;">Eje</label>
+            <select class="form-select form-select-sm" id="ffEje" onchange="cargarFisicoFinanciero()">
+                <option value="0">Todos los ejes</option>
+                <?php foreach ($ejes as $eje): ?>
+                    <option value="<?= (int)$eje['id_eje'] ?>"><?= e($eje['nombre_eje']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3" id="ffTarjetas"></div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-7">
+            <div class="card h-100"><div class="card-body">
+                <h6 class="fw-bold mb-1" style="color:#0A2647;">Mapa de metas</h6>
+                <p class="text-muted mb-2" style="font-size:.75rem;">Cada punto es una meta. <strong>Arriba de la línea</strong> = se gastó más de lo que se avanzó.</p>
+                <canvas id="graficaFisicoFinanciero"></canvas>
+            </div></div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100"><div class="card-body" style="font-size:.82rem;">
+                <h6 class="fw-bold mb-2" style="color:#0A2647;">¿Cómo se lee?</h6>
+                <p class="mb-2"><span class="badge" style="background:#2fa86a;">Equilibrado</span> el gasto va de acuerdo con lo realizado (diferencia de 25 puntos o menos).</p>
+                <p class="mb-2"><span class="badge" style="background:#e0a800;">Gasto adelantado</span> se gastó más de 25 puntos por encima de lo realizado. <strong>Revisar.</strong></p>
+                <p class="mb-2"><span class="badge" style="background:#c0392b;">Sobreejercicio</span> se gastó más del 100% del presupuesto asignado.</p>
+                <p class="mb-2"><span class="badge" style="background:#5b7db1;">Gasto rezagado</span> se avanzó más de lo que se ha pagado (puede haber pagos pendientes).</p>
+                <p class="mb-0"><span class="badge" style="background:#adb5bd;">Sin presupuesto</span> la meta no tiene presupuesto asignado capturado.</p>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table id="TBFisicoFinanciero" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Eje</th><th>Programa</th><th>Actividad</th><th>Asignado</th><th>Ejercido</th>
+                    <th>% Físico</th><th>% Financiero</th><th>Diferencia</th><th>Situación</th><th style="text-align:center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+<?php
+}
+
+function DatosFisicoFinanciero()
+{
+    $id_eje = (int)($_GET['eje'] ?? 0);
+    $sql = "SELECT m.id_meta, m.actividad, m.meta_programada, m.meta_alcanzada,
+                   m.presupuesto_asignado, m.presupuesto_ejercido, p.nombre_programa, e.nombre_eje
+            FROM metas m
+            INNER JOIN programas p ON m.id_programa = p.id_programa
+            INNER JOIN ejes e      ON p.id_eje = e.id_eje";
+    $metas = $id_eje > 0
+        ? consultarPreparado($sql . " WHERE e.id_eje = ? ORDER BY e.nombre_eje, p.nombre_programa", 'i', [$id_eje])
+        : consultarPreparado($sql . " ORDER BY e.nombre_eje, p.nombre_programa");
+
+    $lista = [];
+    $totalAsignado = 0;
+    $totalEjercido = 0;
+    $conteo = ['Equilibrado' => 0, 'Gasto adelantado' => 0, 'Sobreejercicio' => 0, 'Gasto rezagado' => 0, 'Sin presupuesto' => 0];
+
+    foreach ($metas as $m) {
+        $programada = (float)$m['meta_programada'];
+        $asignado   = (float)$m['presupuesto_asignado'];
+        $ejercido   = (float)$m['presupuesto_ejercido'];
+        $fisico     = $programada > 0 ? round(min((float)$m['meta_alcanzada'] / $programada, 1) * 100, 1) : 0;
+        $financiero = $asignado > 0 ? round($ejercido / $asignado * 100, 1) : null;
+        $situacion  = clasificarFisicoFinanciero($fisico, $financiero);
+
+        $totalAsignado += $asignado;
+        $totalEjercido += $ejercido;
+        $conteo[$situacion]++;
+
+        $lista[] = [
+            'id_meta'         => (int)$m['id_meta'],
+            'nombre_eje'      => $m['nombre_eje'],
+            'nombre_programa' => $m['nombre_programa'],
+            'actividad'       => $m['actividad'],
+            'asignado'        => $asignado,
+            'ejercido'        => $ejercido,
+            'fisico'          => $fisico,
+            'financiero'      => $financiero,
+            'diferencia'      => $financiero === null ? null : round($financiero - $fisico, 1),
+            'situacion'       => $situacion,
+        ];
+    }
+
+    responderJson([
+        'data'    => $lista,
+        'resumen' => [
+            'asignado'   => $totalAsignado,
+            'ejercido'   => $totalEjercido,
+            'porcentaje' => $totalAsignado > 0 ? round($totalEjercido / $totalAsignado * 100, 1) : 0,
+            'conteo'     => $conteo,
+        ],
+    ]);
+}
+
+
+////////////////////// 11. SEGUIMIENTO POR DEPENDENCIA //////////////////////
+
+// Nombre de la dependencia: la columna "responsable" del programa.
+function sqlDependencia()
+{
+    return "COALESCE(NULLIF(TRIM(p.responsable), ''), 'Sin responsable asignado')";
+}
+
+function VistaDependencias()
+{
+?>
+    <h5 class="fw-bold mb-1" style="color:#0A2647;">
+        <i class="bi bi-building me-2"></i>Seguimiento por Dependencia
+    </h5>
+    <p class="text-muted mb-3" style="font-size:.85rem;">
+        Situación de las metas de cada área responsable. Las dependencias con más metas en rojo aparecen primero.
+    </p>
+    <div class="row g-3 mb-3" id="depTarjetas"></div>
+    <div class="card mb-3"><div class="card-body">
+        <h6 class="fw-bold mb-2" style="color:#0A2647;">Semáforo por dependencia <span class="text-muted fw-normal" style="font-size:.75rem;">(las 12 con más metas)</span></h6>
+        <div style="position:relative;height:380px;"><canvas id="graficaDependencias"></canvas></div>
+    </div></div>
+    <div class="table-responsive">
+        <table id="TBDependencias" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Dependencia</th><th>Programas</th><th>Metas</th><th>Terminadas</th><th>Vencidas</th>
+                    <th>Semáforo</th><th>Avance promedio</th><th>% Ejercido</th><th style="text-align:center;">Ver</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+<?php
+}
+
+function DatosDependencias()
+{
+    $dep = sqlDependencia();
+
+    // Programas por dependencia (incluye las que todavía no tienen metas)
+    $programas = consultarPreparado("SELECT $dep AS dependencia, COUNT(*) AS total FROM programas p GROUP BY dependencia");
+
+    $metas = consultarPreparado(
+        "SELECT $dep AS dependencia, m.meta_programada, m.meta_alcanzada, m.estado, m.fecha_inicio, m.fecha_limite,
+                m.presupuesto_asignado, m.presupuesto_ejercido,
+                (m.fecha_limite < CURDATE() AND m.estado <> 'Terminado') AS vencida, " . columnasDias() . "
+         FROM metas m
+         INNER JOIN programas p ON m.id_programa = p.id_programa"
+    );
+
+    $porDep = [];
+    foreach ($programas as $p) {
+        $porDep[$p['dependencia']] = [
+            'dependencia' => $p['dependencia'], 'programas' => (int)$p['total'], 'metas' => 0, 'terminadas' => 0,
+            'vencidas' => 0, 'verde' => 0, 'amarillo' => 0, 'rojo' => 0, 'sin_fecha' => 0,
+            'suma_avance' => 0, 'asignado' => 0, 'ejercido' => 0,
+        ];
+    }
+    $claves = ['Verde' => 'verde', 'Amarillo' => 'amarillo', 'Rojo' => 'rojo', 'Sin fecha' => 'sin_fecha'];
+    foreach ($metas as $m) {
+        $dep = $m['dependencia'];
+        $s   = calcularSemaforo($m);
+        $porDep[$dep]['metas']++;
+        $porDep[$dep]['suma_avance'] += $s['real'];
+        $porDep[$dep]['asignado']    += (float)$m['presupuesto_asignado'];
+        $porDep[$dep]['ejercido']    += (float)$m['presupuesto_ejercido'];
+        if ($m['estado'] === 'Terminado') $porDep[$dep]['terminadas']++;
+        if ((int)$m['vencida'] === 1)     $porDep[$dep]['vencidas']++;
+        $porDep[$dep][$claves[$s['color']]]++;
+    }
+
+    $lista = [];
+    foreach ($porDep as $d) {
+        $d['avance']     = $d['metas'] > 0 ? round($d['suma_avance'] / $d['metas'], 1) : null;
+        $d['financiero'] = $d['asignado'] > 0 ? round($d['ejercido'] / $d['asignado'] * 100, 1) : null;
+        unset($d['suma_avance']);
+        $lista[] = $d;
+    }
+    // Primero las que tienen más metas en rojo, luego más vencidas, luego menor avance
+    usort($lista, fn($a, $b) => [$b['rojo'], $b['vencidas'], $a['avance'] ?? 101] <=> [$a['rojo'], $a['vencidas'], $b['avance'] ?? 101]);
+
+    responderJson(['data' => $lista]);
+}
+
+// Metas de una dependencia (modal)
+function MetasDependencia()
+{
+    $dependencia = trim($_GET['dep'] ?? '');
+    $metas = consultarPreparado(
+        "SELECT m.id_meta, m.actividad, m.unidad_medida, m.meta_programada, m.meta_alcanzada, m.estado,
+                m.fecha_inicio, m.fecha_limite, p.nombre_programa, " . columnasDias() . "
+         FROM metas m
+         INNER JOIN programas p ON m.id_programa = p.id_programa
+         WHERE " . sqlDependencia() . " = ?
+         ORDER BY p.nombre_programa, m.id_meta",
+        's', [$dependencia]
+    );
+?>
+    <h6 class="fw-bold mb-3" style="color:#0A2647;"><i class="bi bi-building me-2"></i><?= e($dependencia) ?></h6>
+    <?php if (empty($metas)): ?>
+        <p class="text-muted">Esta dependencia todavía no tiene metas registradas.</p>
+    <?php else: ?>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle" style="font-size:.84rem;">
+                <thead><tr>
+                    <th style="background:#0A2647;color:#fff;">Programa</th>
+                    <th style="background:#0A2647;color:#fff;">Actividad</th>
+                    <th style="background:#0A2647;color:#fff;">Avance</th>
+                    <th style="background:#0A2647;color:#fff;">Semáforo</th>
+                    <th style="background:#0A2647;color:#fff;">Fecha límite</th>
+                    <th style="background:#0A2647;color:#fff;text-align:center;">Acciones</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($metas as $m): $s = calcularSemaforo($m); ?>
+                    <tr>
+                        <td><?= e($m['nombre_programa']) ?></td>
+                        <td><?= e($m['actividad']) ?></td>
+                        <td class="text-nowrap"><?= formatoNumero($m['meta_alcanzada']) ?> / <?= formatoNumero($m['meta_programada']) ?> (<?= $s['real'] ?>%)</td>
+                        <td><?= circuloSemaforo($s['color']) ?></td>
+                        <td><?= formatoFecha($m['fecha_limite']) ?></td>
+                        <td class="text-center text-nowrap"><?= botonesAccionMeta($m['id_meta']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif;
+}
+
+
+////////////////////// 12. CALENDARIO DE VENCIMIENTOS //////////////////////
+
+function VistaCalendario()
+{
+?>
+    <h5 class="fw-bold mb-1" style="color:#0A2647;">
+        <i class="bi bi-calendar-event me-2"></i>Calendario de Vencimientos
+    </h5>
+    <p class="text-muted mb-3" style="font-size:.85rem;">Fechas límite de las metas, con el color de su semáforo. Haz clic en una meta para ver su ficha.</p>
+
+    <div class="card mb-3"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <button class="btn btn-outline-secondary btn-sm" onclick="moverCalendario(-1)" title="Mes anterior"><i class="bi bi-chevron-left"></i></button>
+            <h5 class="fw-bold mb-0" style="color:#0A2647;" id="calTitulo">—</h5>
+            <button class="btn btn-outline-secondary btn-sm" onclick="moverCalendario(1)" title="Mes siguiente"><i class="bi bi-chevron-right"></i></button>
+        </div>
+        <div class="calendario-metas" id="calCuadricula"></div>
+        <div class="d-flex flex-wrap gap-3 mt-3" style="font-size:.75rem;">
+            <span><?= circuloSemaforo('Verde') ?></span><span><?= circuloSemaforo('Amarillo') ?></span>
+            <span><?= circuloSemaforo('Rojo') ?></span><span><?= circuloSemaforo('Sin fecha') ?></span>
+            <span><i class="bi bi-check-circle-fill" style="color:#1a6b3c;"></i> Terminada</span>
+        </div>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+        <h6 class="fw-bold mb-2" style="color:#0A2647;"><i class="bi bi-list-ul me-2"></i>Metas que vencen en el mes</h6>
+        <div id="calLista"></div>
+    </div></div>
+<?php
+}
+
+function DatosCalendario()
+{
+    $mes = $_GET['mes'] ?? '';
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mes)) {
+        $mes = substr(fechaHoy(), 0, 7);
+    }
+    $inicio = $mes . '-01';
+    $fin    = date('Y-m-t', strtotime($inicio));
+
+    $metas = consultarPreparado(
+        "SELECT m.id_meta, m.actividad, m.meta_programada, m.meta_alcanzada, m.estado, m.fecha_inicio, m.fecha_limite,
+                p.nombre_programa, " . columnasDias() . "
+         FROM metas m
+         INNER JOIN programas p ON m.id_programa = p.id_programa
+         WHERE m.fecha_limite BETWEEN ? AND ?
+         ORDER BY m.fecha_limite, m.id_meta",
+        'ss', [$inicio, $fin]
+    );
+
+    $lista = [];
+    foreach ($metas as $m) {
+        $s = calcularSemaforo($m);
+        $lista[] = [
+            'id_meta'   => (int)$m['id_meta'],
+            'actividad' => $m['actividad'],
+            'programa'  => $m['nombre_programa'],
+            'fecha'     => $m['fecha_limite'],
+            'estado'    => $m['estado'],
+            'semaforo'  => $s['color'],
+            'real'      => $s['real'],
+        ];
+    }
+    responderJson(['mes' => $mes, 'hoy' => fechaHoy(), 'metas' => $lista]);
+}
+
+
+////////////////////// 13. OBSERVACIONES Y ACUERDOS POR META //////////////////////
+// Usa la tabla observaciones_meta (sql/planeacion_extra.sql).
+
+
+function SeccionObservaciones($id_meta)
+{
+    try {
+        $observaciones = consultarPreparado(
+            "SELECT o.*, u.nombre FROM observaciones_meta o
+             LEFT JOIN usuarios u ON o.registrado_por = u.id_usuario
+             WHERE o.id_meta = ? ORDER BY o.id_observacion DESC",
+            'i', [$id_meta]
+        );
+    } catch (Throwable $error) {
+        echo '<div class="alert alert-warning" style="font-size:.85rem;"><i class="bi bi-database-exclamation me-1"></i>'
+           . 'Para usar las observaciones hay que ejecutar <strong>sql/planeacion_extra.sql</strong> en la base de datos.</div>';
+        return;
+    }
+    $hoy     = fechaHoy();
+    $colores = ['Observación' => ['#0A2647', '#e8eef7'], 'Acuerdo' => ['#1a6b3c', '#d4f4e2'], 'Problema' => ['#7b1f1f', '#fde8e8']];
+?>
+    <h6 class="fw-bold mb-3" style="color:#0A2647;"><i class="bi bi-chat-left-text me-2"></i>Observaciones y acuerdos</h6>
+
+    <form id="frmObservacion" onsubmit="guardarObservacion(event)" class="p-3 rounded mb-3" style="background:#f4f6fa;">
+        <input type="hidden" name="id_meta" value="<?= (int)$id_meta ?>">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <select class="form-select form-select-sm" name="tipo" id="obsTipo" onchange="document.getElementById('obsFechaCaja').hidden = this.value !== 'Acuerdo'">
+                    <?php foreach (TIPOS_OBSERVACION as $t): ?><option value="<?= e($t) ?>"><?= e($t) ?></option><?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-8" id="obsFechaCaja" hidden>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">Fecha compromiso</span>
+                    <input type="date" class="form-control" name="fecha_compromiso" id="obsFecha" min="<?= $hoy ?>">
+                </div>
+            </div>
+            <div class="col-12">
+                <textarea class="form-control form-control-sm" name="texto" id="obsTexto" rows="2" maxlength="2000" required
+                          placeholder="Ej. Reunión con Obras Públicas: el avance se retrasa por lluvias; se reprograma para el 30/11."></textarea>
+            </div>
+            <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Agregar</button></div>
+        </div>
+    </form>
+
+    <?php if (empty($observaciones)): ?>
+        <p class="text-muted" style="font-size:.85rem;">Todavía no hay observaciones para esta meta.</p>
+    <?php endif; ?>
+    <?php foreach ($observaciones as $o):
+        [$texto, $fondo] = $colores[$o['tipo']] ?? $colores['Observación'];
+        $esAcuerdo = $o['tipo'] === 'Acuerdo';
+        $vencido   = $esAcuerdo && !$o['cumplido'] && $o['fecha_compromiso'] && $o['fecha_compromiso'] < $hoy;
+    ?>
+        <div class="p-2 mb-2 rounded" style="border:1px solid #dee2e6;border-left:4px solid <?= $texto ?>;font-size:.85rem;">
+            <div class="d-flex justify-content-between flex-wrap gap-1">
+                <div>
+                    <span style="background:<?= $fondo ?>;color:<?= $texto ?>;font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;"><?= e($o['tipo']) ?></span>
+                    <?php if ($esAcuerdo): ?>
+                        <?php if ($o['cumplido']): ?>
+                            <span class="badge bg-success">Cumplido</span>
+                        <?php elseif ($vencido): ?>
+                            <span class="badge bg-danger">Vencido el <?= formatoFecha($o['fecha_compromiso']) ?></span>
+                        <?php elseif ($o['fecha_compromiso']): ?>
+                            <span class="badge bg-warning text-dark">Compromiso: <?= formatoFecha($o['fecha_compromiso']) ?></span>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+                <div class="text-muted" style="font-size:.75rem;">
+                    <?= e($o['nombre'] ?? 'Usuario eliminado') ?> · <?= date('d/m/Y H:i', strtotime($o['creado_en'])) ?>
+                    <?php if ($esAcuerdo && !$o['cumplido']): ?>
+                        <a href="#" onclick="cumplirAcuerdo(<?= (int)$o['id_observacion'] ?>);return false;" class="ms-2" title="Marcar como cumplido"><i class="bi bi-check2-square" style="color:#1a6b3c;"></i></a>
+                    <?php endif; ?>
+                    <?php if ((int)$o['registrado_por'] === (int)$_SESSION['id_usuario']): ?>
+                        <a href="#" onclick="eliminarObservacion(<?= (int)$o['id_observacion'] ?>);return false;" class="ms-2" title="Eliminar"><i class="bi bi-trash" style="color:#c0392b;"></i></a>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="mt-1"><?= nl2br(e($o['texto'])) ?></div>
+        </div>
+    <?php endforeach;
+}
+
+function ModalObservaciones()
+{
+    $id_meta = (int)($_GET['idr'] ?? 0);
+    $meta    = obtenerMeta($id_meta);
+    if (!$meta) { echo '<div class="alert alert-warning">La meta no existe.</div>'; return; }
+?>
+    <p class="mb-3" style="font-size:.85rem;">
+        <strong><?= e($meta['actividad']) ?></strong><br>
+        <span class="text-muted"><?= e($meta['nombre_eje']) ?> › <?= e($meta['nombre_programa']) ?></span>
+    </p>
+<?php
+    SeccionObservaciones($id_meta);
+}
+
+function GuardarObservacion()
+{
+    global $obj;
+    $id_meta = (int)($_POST['id_meta'] ?? 0);
+    $tipo    = $_POST['tipo'] ?? '';
+    $texto   = trim($_POST['texto'] ?? '');
+    $fecha   = trim($_POST['fecha_compromiso'] ?? '');
+
+    if (!in_array($tipo, TIPOS_OBSERVACION, true)) responderJson(['ok' => false, 'mensaje' => 'Tipo no válido.']);
+    if (mb_strlen($texto) < 3)                     responderJson(['ok' => false, 'mensaje' => 'Escribe la observación (mínimo 3 caracteres).']);
+    if (mb_strlen($texto) > 2000)                  responderJson(['ok' => false, 'mensaje' => 'Máximo 2000 caracteres.']);
+    $meta = obtenerMeta($id_meta);
+    if (!$meta)                                    responderJson(['ok' => false, 'mensaje' => 'La meta no existe.']);
+
+    $fechaCompromiso = null;
+    if ($tipo === 'Acuerdo') {
+        $d = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$d || $d->format('Y-m-d') !== $fecha) responderJson(['ok' => false, 'mensaje' => 'Un acuerdo necesita una fecha compromiso válida.']);
+        $fechaCompromiso = $fecha;
+    }
+
+    try {
+        $conexion   = $obj->conexion();
+        $id_usuario = (int)$_SESSION['id_usuario'];
+        $stmt = mysqli_prepare($conexion, "INSERT INTO observaciones_meta (id_meta, tipo, texto, fecha_compromiso, registrado_por) VALUES (?, ?, ?, ?, ?)");
+        mysqli_stmt_bind_param($stmt, 'isssi', $id_meta, $tipo, $texto, $fechaCompromiso, $id_usuario);
+        if (!mysqli_stmt_execute($stmt)) throw new Exception('No se pudo guardar.');
+        mysqli_stmt_close($stmt);
+    } catch (Throwable $error) {
+        responderJson(['ok' => false, 'mensaje' => 'No se pudo guardar. ¿Ya se ejecutó sql/planeacion_extra.sql?']);
+    }
+    try {
+        registrarBitacora('Agregar ' . mb_strtolower($tipo), 'Meta #' . $id_meta . ' (' . $meta['actividad'] . '): ' . mb_substr($texto, 0, 150));
+    } catch (Throwable $error) {
+    }
+    responderJson(['ok' => true]);
+}
+
+function CumplirAcuerdo()
+{
+    global $obj;
+    $id   = (int)($_GET['idr'] ?? 0);
+    $stmt = mysqli_prepare($obj->conexion(), "UPDATE observaciones_meta SET cumplido = 1 WHERE id_observacion = ? AND tipo = 'Acuerdo'");
+    mysqli_stmt_bind_param($stmt, 'i', $id);
+    mysqli_stmt_execute($stmt);
+    $cambio = mysqli_stmt_affected_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+    if ($cambio) {
+        try { registrarBitacora('Cumplir acuerdo', 'Acuerdo #' . $id . ' marcado como cumplido.'); } catch (Throwable $error) {}
+    }
+    responderJson(['ok' => $cambio]);
+}
+
+// Solo quien escribió la observación puede borrarla.
+function EliminarObservacion()
+{
+    global $obj;
+    $id         = (int)($_GET['idr'] ?? 0);
+    $id_usuario = (int)$_SESSION['id_usuario'];
+    $stmt = mysqli_prepare($obj->conexion(), "DELETE FROM observaciones_meta WHERE id_observacion = ? AND registrado_por = ?");
+    mysqli_stmt_bind_param($stmt, 'ii', $id, $id_usuario);
+    mysqli_stmt_execute($stmt);
+    $borrado = mysqli_stmt_affected_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+    if ($borrado) {
+        try { registrarBitacora('Eliminar observación', 'Observación #' . $id . ' eliminada.'); } catch (Throwable $error) {}
+    }
+    responderJson(['ok' => $borrado]);
+}
+
+// Acuerdos no cumplidos con fecha compromiso vencida o en los próximos 15 días (pantalla de Alertas).
+function TablaAcuerdosPendientes()
+{
+    try {
+        $acuerdos = consultarPreparado(
+            "SELECT o.id_meta, o.texto, o.fecha_compromiso, m.actividad, u.nombre,
+                    DATEDIFF(o.fecha_compromiso, CURDATE()) AS dias
+             FROM observaciones_meta o
+             INNER JOIN metas m ON o.id_meta = m.id_meta
+             LEFT JOIN usuarios u ON o.registrado_por = u.id_usuario
+             WHERE o.tipo = 'Acuerdo' AND o.cumplido = 0
+               AND o.fecha_compromiso <= DATE_ADD(CURDATE(), INTERVAL 15 DAY)
+             ORDER BY o.fecha_compromiso"
+        );
+    } catch (Throwable $error) {
+        return;   // la tabla todavía no existe
+    }
+?>
+    <div class="card mb-4" style="border-left:5px solid #5b7db1;">
+        <div class="card-body">
+            <h6 class="fw-bold mb-3" style="color:#5b7db1;"><i class="bi bi-people me-2"></i>Acuerdos pendientes (vencidos o en los próximos 15 días)</h6>
+            <?php if (empty($acuerdos)): ?>
+                <p class="text-muted mb-0" style="font-size:.85rem;"><i class="bi bi-check-circle me-1" style="color:#2fa86a;"></i>No hay acuerdos pendientes.</p>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" style="font-size:.84rem;">
+                        <thead><tr>
+                            <th style="background:#0A2647;color:#fff;">Meta</th>
+                            <th style="background:#0A2647;color:#fff;">Acuerdo</th>
+                            <th style="background:#0A2647;color:#fff;">Compromiso</th>
+                            <th style="background:#0A2647;color:#fff;">Registró</th>
+                            <th style="background:#0A2647;color:#fff;text-align:center;">Ver</th>
+                        </tr></thead>
+                        <tbody>
+                        <?php foreach ($acuerdos as $a): $dias = (int)$a['dias']; ?>
+                            <tr>
+                                <td><?= e($a['actividad']) ?></td>
+                                <td><?= e(mb_strimwidth($a['texto'], 0, 120, '…')) ?></td>
+                                <td class="text-nowrap">
+                                    <?= formatoFecha($a['fecha_compromiso']) ?><br>
+                                    <strong style="color:<?= $dias < 0 ? '#c0392b' : '#c89b00' ?>;font-size:.75rem;">
+                                        <?= $dias < 0 ? 'Vencido hace ' . abs($dias) . ' día(s)' : ($dias === 0 ? 'Vence hoy' : 'Faltan ' . $dias . ' día(s)') ?>
+                                    </strong>
+                                </td>
+                                <td><?= e($a['nombre'] ?? '—') ?></td>
+                                <td class="text-center"><a href="#" onclick="abrirObservaciones(<?= (int)$a['id_meta'] ?>);return false;" class="fs-5" title="Ver observaciones"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php
 }
