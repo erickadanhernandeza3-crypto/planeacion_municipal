@@ -1,0 +1,8 @@
+Coloca aquí el escudo del H. Ayuntamiento con el nombre:  escudo.png
+(de preferencia PNG con fondo transparente, unos 300 x 300 px).
+
+En cuanto exista img/escudo.png, el sistema lo muestra automáticamente en:
+  - la pantalla de inicio de sesión
+  - el menú lateral de ambos paneles
+  - el reporte imprimible por eje
+Si no existe, se sigue mostrando el ícono del edificio.

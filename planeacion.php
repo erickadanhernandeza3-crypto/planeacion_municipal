@@ -4,6 +4,12 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
     header('Location: index.php');
     exit;
 }
+// Cierre automático de la sesión después de 30 minutos sin actividad
+require_once __DIR__ . '/Php/comunes_extra.php';
+if (!revisarInactividad()) {
+    header('Location: Php/cerrar_sesion.php?motivo=expirada');
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -31,6 +37,7 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="js/extras_ui.js?v=<?php echo filemtime(__DIR__ . '/js/extras_ui.js'); ?>"></script>
   <script src="js/planeacion_extra.js?v=<?php echo filemtime(__DIR__ . '/js/planeacion_extra.js'); ?>"></script>
   <link rel="stylesheet" href="css/estilos.css">
 </head>
@@ -45,9 +52,13 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
 
         <!-- Logo -->
         <div class="d-flex align-items-center gap-2 pb-3 mb-2 border-bottom border-secondary w-100">
+          <?php if (file_exists(__DIR__ . '/img/escudo.png')): ?>
+          <img src="img/escudo.png" alt="Escudo" style="width:36px;height:36px;object-fit:contain;">
+          <?php else: ?>
           <div style="width:36px;height:36px;background:#D4AF37;border-radius:8px;display:flex;align-items:center;justify-content:center;">
             <i class="bi bi-building" style="color:#0A2647;font-size:1.1rem;"></i>
           </div>
+          <?php endif; ?>
           <span class="d-none d-sm-inline fw-bold" style="font-size:.75rem;color:#D4AF37;text-transform:uppercase;letter-spacing:.04em;line-height:1.3;">
             Sistema de<br>Planeación Mpal.
           </span>
@@ -56,7 +67,7 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
         <!-- Usuario -->
         <div class="d-none d-sm-flex align-items-center gap-2 mb-3 p-2 rounded w-100" style="background:rgba(255,255,255,.08);">
           <div style="width:32px;height:32px;border-radius:50%;background:#D4AF37;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;color:#0A2647;">
-            <?= strtoupper(substr($_SESSION['nombre'], 0, 1)) ?>
+            <?= htmlspecialchars(mb_strtoupper(mb_substr($_SESSION['nombre'], 0, 1))) ?>
           </div>
           <div>
             <div style="font-size:.78rem;font-weight:600;"><?= htmlspecialchars($_SESSION['nombre']) ?></div>
@@ -66,6 +77,14 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
 
         <!-- Menú -->
         <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start w-100" id="menu">
+
+          <li class="nav-item w-100">
+            <a href="planeacion.php"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-house-door fs-5"></i>
+              <span class="d-none d-sm-inline">Inicio</span>
+            </a>
+          </li>
 
           <li class="nav-item w-100">
             <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Módulos</small>
@@ -128,6 +147,13 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
                class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
               <i class="bi bi-alarm fs-5"></i>
               <span class="d-none d-sm-inline">Alertas de Vencimiento</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirTrimestralPlan()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-calendar4-week fs-5"></i>
+              <span class="d-none d-sm-inline">Comparativo Trimestral</span>
             </a>
           </li>
           <li class="nav-item w-100">

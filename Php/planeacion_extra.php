@@ -10,16 +10,20 @@
  * 6. Ficha completa de la meta
  * 7. Reporte imprimible por eje
  * 8. Cambiar mi contraseña
+ * 9. Comparativo trimestral
  *
  * Este archivo lo incluye controlador.php solo para los idopc que empiezan
  * con "Plan". No modifica nada de operaciones.php ni de vistas.php.
+ * Las funciones de ayuda (semáforo, bitácora, formatos) están en comunes_extra.php.
  * Todas las consultas usan sentencias preparadas (prepare / bind_param).
  */
+
+require_once __DIR__ . '/comunes_extra.php';
 
 $idopc = $_GET['idopc'] ?? '';
 
 // Ninguna opción de este archivo se ejecuta si no hay sesión de planeación.
-verificarRolPlaneacion();
+verificarRol('planeacion');
 
 switch ($idopc) {
 
@@ -35,158 +39,10 @@ switch ($idopc) {
     case 'PlanReporteEje':         ReporteEje();              break;
     case 'PlanFrmContrasena':      FormularioContrasena();    break;
     case 'PlanGuardarContrasena':  GuardarContrasena();       break;
+    case 'PlanTrimestral':         VistaTrimestral('PlanDatosTrimestral'); break;
+    case 'PlanDatosTrimestral':    responderJson(datosTrimestrales((int)($_GET['anio'] ?? date('Y')))); break;
 }
 
-
-////////////////////// SEGURIDAD Y AUXILIARES //////////////////////
-
-// Revisa en el servidor que quien llama tenga sesión con rol 'planeacion'.
-// Es la misma regla que usa planeacion.php al inicio.
-function verificarRolPlaneacion()
-{
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
-    if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'planeacion') {
-        http_response_code(403);
-        echo 'Acceso denegado. Inicia sesión con un usuario de Planeación.';
-        exit;
-    }
-}
-
-// Ejecuta un SELECT preparado y devuelve todas las filas.
-function consultarPreparado($sql, $tipos = '', $parametros = [])
-{
-    global $obj;
-    $conexion = $obj->conexion();
-    $stmt = mysqli_prepare($conexion, $sql);
-    if ($tipos !== '') {
-        mysqli_stmt_bind_param($stmt, $tipos, ...$parametros);
-    }
-    mysqli_stmt_execute($stmt);
-    $resultado = mysqli_stmt_get_result($stmt);
-    $filas = mysqli_fetch_all($resultado, MYSQLI_ASSOC);
-    mysqli_stmt_close($stmt);
-    return $filas;
-}
-
-// Guarda un movimiento en la tabla bitacora. Si falla, lanza excepción
-// para que GuardarAvance() pueda revertir la transacción.
-function registrarBitacora($accion, $descripcion)
-{
-    global $obj;
-    $conexion   = $obj->conexion();
-    $id_usuario = $_SESSION['id_usuario'] ?? null;
-    $ip         = $_SERVER['REMOTE_ADDR'] ?? '';
-    $stmt = mysqli_prepare($conexion, "INSERT INTO bitacora (id_usuario, accion, descripcion, ip) VALUES (?, ?, ?, ?)");
-    mysqli_stmt_bind_param($stmt, 'isss', $id_usuario, $accion, $descripcion, $ip);
-    if (!mysqli_stmt_execute($stmt)) throw new Exception('No se pudo registrar en la bitácora.');
-    mysqli_stmt_close($stmt);
-}
-
-// Escapa texto para mostrarlo en HTML.
-function e($texto)
-{
-    return htmlspecialchars((string)$texto, ENT_QUOTES, 'UTF-8');
-}
-
-// 1500.50 -> "1,500.5"   10.00 -> "10"
-function formatoNumero($numero)
-{
-    $texto = number_format((float)$numero, 2, '.', ',');
-    return rtrim(rtrim($texto, '0'), '.');
-}
-
-// 2026-07-21 -> 21/07/2026
-function formatoFecha($fecha)
-{
-    if (!$fecha) return 'Sin fecha';
-    return date('d/m/Y', strtotime($fecha));
-}
-
-// Calcula el estado según lo alcanzado. Es la misma regla que usa crudMetas().
-function calcularEstado($programada, $alcanzada)
-{
-    if ($programada > 0) {
-        $avance = ($alcanzada / $programada) * 100;
-        if ($avance >= 100)  return 'Terminado';
-        if ($avance > 0)     return 'En Proceso';
-    }
-    return 'Pendiente';
-}
-
-/*
- * SEMÁFORO DE CUMPLIMIENTO
- * real%     = alcanzada / programada (máximo 100)
- * esperado% = días transcurridos desde fecha_inicio / días totales hasta fecha_limite (entre 0 y 100)
- * Verde:    real está a 10 puntos o menos debajo de lo esperado
- * Amarillo: entre 10 y 25 puntos debajo
- * Rojo:     más de 25 puntos debajo
- * No cambia la columna estado; solo se calcula al mostrar.
- */
-function calcularSemaforo($meta)
-{
-    $programada = (float)$meta['meta_programada'];
-    $alcanzada  = (float)$meta['meta_alcanzada'];
-    $real       = ($programada > 0) ? min($alcanzada / $programada, 1) * 100 : 0;
-
-    if ($real >= 100) {
-        return ['real' => 100, 'esperado' => 100, 'color' => 'Verde'];
-    }
-    if (empty($meta['fecha_limite'])) {
-        return ['real' => round($real, 1), 'esperado' => null, 'color' => 'Sin fecha'];
-    }
-
-    // Los días vienen calculados por MySQL (columnasDias()), así "hoy" es el mismo que usan las alertas.
-    $diasTotales       = (int)$meta['dias_totales'];
-    $diasTranscurridos = (int)$meta['dias_transcurridos'];
-
-    if ($diasTotales <= 0) {
-        $esperado = ($diasTranscurridos >= $diasTotales) ? 100 : 0;
-    } else {
-        $esperado = ($diasTranscurridos / $diasTotales) * 100;
-    }
-    $esperado = max(0, min(100, $esperado));
-
-    $diferencia = $esperado - $real;
-    if ($diferencia <= 10)      $color = 'Verde';
-    elseif ($diferencia <= 25)  $color = 'Amarillo';
-    else                        $color = 'Rojo';
-
-    return ['real' => round($real, 1), 'esperado' => round($esperado, 1), 'color' => $color];
-}
-
-// Columnas que necesita calcularSemaforo(); se agregan al SELECT de metas (alias m).
-function columnasDias()
-{
-    return "DATEDIFF(m.fecha_limite, m.fecha_inicio) AS dias_totales,
-            DATEDIFF(CURDATE(), m.fecha_inicio)       AS dias_transcurridos";
-}
-
-// Fecha de hoy según la base de datos (formato Y-m-d).
-function fechaHoy()
-{
-    $filas = consultarPreparado("SELECT CURDATE() AS hoy");
-    return $filas[0]['hoy'];
-}
-
-// Círculo de color para el semáforo (HTML).
-function circuloSemaforo($color)
-{
-    $colores = ['Verde' => '#2fa86a', 'Amarillo' => '#e0a800', 'Rojo' => '#c0392b', 'Sin fecha' => '#adb5bd'];
-    $c = $colores[$color] ?? '#adb5bd';
-    return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:600;">'
-         . '<span style="width:14px;height:14px;border-radius:50%;background:' . $c . ';display:inline-block;"></span>'
-         . e($color) . '</span>';
-}
-
-// Etiqueta de estado con los mismos colores que la tabla de metas.
-function etiquetaEstado($estado)
-{
-    $c = ['Terminado' => ['#1a6b3c', '#d4f4e2'], 'En Proceso' => ['#7d5a00', '#fff3cd'], 'Pendiente' => ['#7b1f1f', '#fde8e8']];
-    [$texto, $fondo] = $c[$estado] ?? ['#333', '#eee'];
-    return '<span style="background:' . $fondo . ';color:' . $texto . ';font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">' . e($estado) . '</span>';
-}
 
 // Busca una meta con su programa y eje.
 function obtenerMeta($id_meta)
@@ -203,12 +59,6 @@ function obtenerMeta($id_meta)
     return $filas[0] ?? null;
 }
 
-function responderJson($datos)
-{
-    header('Content-Type: application/json');
-    echo json_encode($datos);
-    exit;
-}
 
 
 ////////////////////// 1. ALERTAS DE VENCIMIENTO //////////////////////
@@ -762,9 +612,14 @@ function ReporteEje()
   </div>
 
   <div class="encabezado d-flex justify-content-between align-items-end">
-    <div>
+    <div class="d-flex align-items-center gap-3">
+      <?php if (file_exists(__DIR__ . '/../img/escudo.png')): ?>
+        <img src="../img/escudo.png" alt="Escudo" style="height:64px;">
+      <?php endif; ?>
+      <div>
       <h4>H. Ayuntamiento de Tamazunchale, S.L.P.</h4>
       <div style="color:#555;">Departamento de Planeación — Reporte de avance de metas por eje estratégico</div>
+      </div>
     </div>
     <div style="text-align:right;color:#555;">
       Fecha de emisión: <strong><?= formatoFecha(fechaHoy()) ?></strong><br>

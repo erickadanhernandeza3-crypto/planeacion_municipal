@@ -59,3 +59,34 @@ table.dataTable tbody tr:hover {
   background: #0A2647;
   color: #fff;
 }
+
+
+/* ══════════ MENÚ PARA CELULAR (js/extras_ui.js) ══════════
+   En pantallas chicas el menú lateral solo muestra íconos.
+   El botón dorado ☰ lo abre completo encima del contenido. */
+.btn-menu-movil,
+.fondo-menu-movil { display: none; }
+
+@media (max-width: 575.98px) {
+  .btn-menu-movil {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 1100;
+    width: 54px; height: 54px; border-radius: 50%; border: none;
+    background: #D4AF37; color: #0A2647; font-size: 1.6rem;
+    box-shadow: 0 4px 14px rgba(10, 38, 71, .35);
+  }
+  body.menu-movil .fondo-menu-movil {
+    display: block; position: fixed; inset: 0; z-index: 1080; background: rgba(0, 0, 0, .45);
+  }
+  /* El menú lateral es la primera columna de la fila principal en ambos paneles */
+  body.menu-movil .container-fluid > .row.flex-nowrap > .col-auto:first-child {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 260px; z-index: 1090;
+    overflow-y: auto; box-shadow: 4px 0 20px rgba(0, 0, 0, .35);
+  }
+  body.menu-movil .container-fluid > .row.flex-nowrap > .col-auto:first-child .d-none.d-sm-inline { display: inline !important; }
+  body.menu-movil .container-fluid > .row.flex-nowrap > .col-auto:first-child .d-none.d-sm-block  { display: block !important; }
+  body.menu-movil .container-fluid > .row.flex-nowrap > .col-auto:first-child .d-none.d-sm-flex   { display: flex !important; }
+  body.menu-movil .container-fluid > .row.flex-nowrap > .col-auto:first-child .align-items-center.align-items-sm-start { align-items: flex-start !important; }
+  /* Tablas y tarjetas con menos margen en celular */
+  .col.py-3.px-4 { padding-left: .75rem !important; padding-right: .75rem !important; min-width: 0; }
+}

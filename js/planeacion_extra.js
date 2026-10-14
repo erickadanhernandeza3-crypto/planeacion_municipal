@@ -276,3 +276,9 @@ async function guardarContrasena(evento) {
     Swal.fire({ title: "No se pudo cambiar", text: data.mensaje, icon: "error" });
   }
 }
+
+
+/////////////////////// 9. Comparativo trimestral ///////////////////////
+function abrirTrimestralPlan() {
+  abrirModuloPlan('PlanTrimestral', () => graficaTrimestral('PlanDatosTrimestral'));
+}

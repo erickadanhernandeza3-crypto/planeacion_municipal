@@ -4,6 +4,12 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
     header('Location: index.php');
     exit;
 }
+// Cierre automático de la sesión después de 30 minutos sin actividad
+require_once __DIR__ . '/Php/comunes_extra.php';
+if (!revisarInactividad()) {
+    header('Location: Php/cerrar_sesion.php?motivo=expirada');
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -23,6 +29,16 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
+  <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Bitácora) -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="js/extras_ui.js?v=<?php echo filemtime(__DIR__ . '/js/extras_ui.js'); ?>"></script>
+  <script src="js/admin_extra.js?v=<?php echo filemtime(__DIR__ . '/js/admin_extra.js'); ?>"></script>
   <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
@@ -35,9 +51,13 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
       <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-3 text-white min-vh-100">
 
         <div class="d-flex align-items-center gap-2 pb-3 mb-2 border-bottom border-secondary w-100">
+          <?php if (file_exists(__DIR__ . '/img/escudo.png')): ?>
+          <img src="img/escudo.png" alt="Escudo" style="width:36px;height:36px;object-fit:contain;">
+          <?php else: ?>
           <div style="width:36px;height:36px;background:#D4AF37;border-radius:8px;display:flex;align-items:center;justify-content:center;">
             <i class="bi bi-building" style="color:#0A2647;font-size:1.1rem;"></i>
           </div>
+          <?php endif; ?>
           <span class="d-none d-sm-inline fw-bold" style="font-size:.75rem;color:#D4AF37;text-transform:uppercase;letter-spacing:.04em;line-height:1.3;">
             Sistema de<br>Planeación Mpal.
           </span>
@@ -45,7 +65,7 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
 
         <div class="d-none d-sm-flex align-items-center gap-2 mb-3 p-2 rounded w-100" style="background:rgba(255,255,255,.08);">
           <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.25);border:2px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;">
-            <?= strtoupper(substr($_SESSION['nombre'], 0, 1)) ?>
+            <?= htmlspecialchars(mb_strtoupper(mb_substr($_SESSION['nombre'], 0, 1))) ?>
           </div>
           <div>
             <div style="font-size:.78rem;font-weight:600;"><?= htmlspecialchars($_SESSION['nombre']) ?></div>
@@ -54,6 +74,14 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
         </div>
 
         <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start w-100" id="menu">
+
+          <li class="nav-item w-100">
+            <a href="administrador.php"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-house-door fs-5"></i>
+              <span class="d-none d-sm-inline">Inicio</span>
+            </a>
+          </li>
 
           <li class="nav-item w-100">
             <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Usuarios</small>
@@ -119,6 +147,24 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
             </a>
           </li>
 
+          <li class="nav-item w-100 mt-2">
+            <small class="text-secondary d-none d-sm-block" style="font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.5rem 0 .2rem;">Supervisión</small>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirTrimestralAdmin()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-calendar4-week fs-5"></i>
+              <span class="d-none d-sm-inline">Comparativo Trimestral</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirBitacora()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-journal-text fs-5"></i>
+              <span class="d-none d-sm-inline">Bitácora del Sistema</span>
+            </a>
+          </li>
+
         </ul>
 
         <hr class="w-100 border-secondary">
@@ -147,7 +193,9 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
             <a href="javascript:buscar('EstructuraTbUsuarios',1,'',0,0)" class="text-decoration-none">
               <div class="p-4 rounded-3 text-white text-center" style="background:linear-gradient(135deg,#0A2647,#14375e);">
                 <i class="bi bi-people fs-2 d-block mb-2"></i>
+                <div id="cntUsuarios" style="font-size:1.8rem;font-weight:800;line-height:1.1;">—</div>
                 <div style="font-size:.9rem;font-weight:600;">Usuarios</div>
+                <div style="font-size:.7rem;opacity:.75;">usuarios activos</div>
               </div>
             </a>
           </div>
@@ -155,7 +203,9 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
             <a href="javascript:buscar('EstructuraTbEjes',1,'',0,0)" class="text-decoration-none">
               <div class="p-4 rounded-3 text-white text-center" style="background:linear-gradient(135deg,#1a6b3c,#2fa86a);">
                 <i class="bi bi-bullseye fs-2 d-block mb-2"></i>
+                <div id="cntEjes" style="font-size:1.8rem;font-weight:800;line-height:1.1;">—</div>
                 <div style="font-size:.9rem;font-weight:600;">Ejes</div>
+                <div style="font-size:.7rem;opacity:.75;">registrados</div>
               </div>
             </a>
           </div>
@@ -163,7 +213,9 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
             <a href="javascript:buscar('EstructuraTbProgramas',1,'',0,0)" class="text-decoration-none">
               <div class="p-4 rounded-3 text-white text-center" style="background:linear-gradient(135deg,#7d5a00,#c89b00);">
                 <i class="bi bi-diagram-3 fs-2 d-block mb-2"></i>
+                <div id="cntProgramas" style="font-size:1.8rem;font-weight:800;line-height:1.1;">—</div>
                 <div style="font-size:.9rem;font-weight:600;">Programas</div>
+                <div style="font-size:.7rem;opacity:.75;">registrados</div>
               </div>
             </a>
           </div>
@@ -171,11 +223,16 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
             <a href="javascript:buscar('EstructuraTbMetas',1,'',0,0)" class="text-decoration-none">
               <div class="p-4 rounded-3 text-white text-center" style="background:linear-gradient(135deg,#7b1f1f,#c0392b);">
                 <i class="bi bi-list-check fs-2 d-block mb-2"></i>
+                <div id="cntMetas" style="font-size:1.8rem;font-weight:800;line-height:1.1;">—</div>
                 <div style="font-size:.9rem;font-weight:600;">Metas</div>
+                <div style="font-size:.7rem;opacity:.75;">registradas</div>
               </div>
             </a>
           </div>
         </div>
+
+        <!-- Dashboard: estados, vencidas, avance por eje, semáforo y últimas actividades (lo llena js/admin_extra.js) -->
+        <div id="dashboardAdmin" class="mt-4"></div>
       </div>
 
       <!-- Div secundario para selects dependientes -->
@@ -199,6 +256,11 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
 
   </div>
 </div>
+
+<script>
+// Llenar el dashboard al abrir la página
+cargarDashboardAdmin();
+</script>
 
 </body>
 </html>

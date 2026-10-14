@@ -29,15 +29,26 @@ if (isset($_SESSION['rol'])) {
 <body>
   <div class="card card-login">
     <div class="login-header">
-      <div class="icono"><i class="bi bi-building"></i></div>
+      <?php if (file_exists(__DIR__ . '/img/escudo.png')): ?>
+        <img src="img/escudo.png" alt="Escudo de Tamazunchale" style="height:80px;margin:0 auto 1rem;display:block;">
+      <?php else: ?>
+        <div class="icono"><i class="bi bi-building"></i></div>
+      <?php endif; ?>
       <h5>Sistema de Planeación Municipal</h5>
       <p>H. Ayuntamiento de Tamazunchale, S.L.P.</p>
     </div>
     <div class="card-body p-4">
-      <?php if (isset($_GET['error'])): ?>
-        <div class="alert alert-danger py-2" style="font-size:.85rem;">
+      <?php if (isset($_GET['error'])):
+        $mensajesError = [
+          'credenciales' => 'Usuario o contraseña incorrectos.',
+          'vacio'        => 'Completa todos los campos.',
+          'expirada'     => 'Tu sesión se cerró por inactividad. Vuelve a iniciar sesión.',
+          'bloqueado'    => 'Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.',
+        ];
+      ?>
+        <div class="alert <?= $_GET['error'] === 'expirada' ? 'alert-warning' : 'alert-danger' ?> py-2" style="font-size:.85rem;">
           <i class="bi bi-exclamation-circle me-1"></i>
-          <?= $_GET['error'] === 'credenciales' ? 'Usuario o contraseña incorrectos.' : 'Completa todos los campos.' ?>
+          <?= $mensajesError[$_GET['error']] ?? 'Completa todos los campos.' ?>
         </div>
       <?php endif; ?>
       <form action="Php/validarLogin.php" method="POST">

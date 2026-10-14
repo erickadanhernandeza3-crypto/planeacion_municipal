@@ -7,6 +7,9 @@ RUN docker-php-ext-install mysqli \
 # de las respuestas y rompe el JSON de las peticiones AJAX.
 COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
 
+# Páginas de error propias, sin listado de carpetas y carpetas internas bloqueadas.
+COPY docker/apache-seguridad.conf /etc/apache2/conf-enabled/zz-seguridad.conf
+
 COPY . /var/www/html/
 
 RUN chown -R www-data:www-data /var/www/html
