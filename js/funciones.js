@@ -138,31 +138,63 @@ function cargarIndicadoresPrograma(idPrograma) {
   if (!cont) return;
   if (!idPrograma) { cont.innerHTML = ''; return; }
 
-  fetch('Php/controlador.php?idopc=IndicadoresPrograma&ops=&idr=' + idPrograma)
+  fetch('Php/controlador.php?idopc=IndicadoresPrograma&ops=&idr=' + idPrograma + '&anio=' + anioIndicadorActual)
     .then(r => r.json())
-    .then(data => renderIndicadoresPrograma(idPrograma, data));
+    .then(data => renderIndicadoresPrograma(idPrograma, data))
+    .catch(() => { cont.innerHTML = '<div class="alert alert-warning">No se pudieron cargar los indicadores. Vuelve a iniciar sesión e inténtalo de nuevo.</div>'; });
 }
 
 function renderIndicadoresPrograma(idPrograma, data) {
   const cont = document.getElementById('listaIndicadores');
+  const calendario = data.calendario || {};
+  const ids = [];
+
+  // Tabla de evaluación mensual: se escribe 1 / 0 (o la cantidad) y se guarda sola al salir de la celda.
+  const tablaEvaluacion = (ind) => {
+    const id  = ind.id_indicador;
+    const cal = calendario[id] || {};
+    ids.push(id);
+    const celdas = (campo) => NOMBRES_MESES.map((_, i) => {
+      const v = cal[i + 1] ? cal[i + 1][campo] : 0;
+      return `<td class="p-0"><input type="number" step="any" min="0" class="form-control form-control-sm text-center border-0 rounded-0 eval-${id}"
+                style="min-width:46px;" data-campo="${campo}" data-mes="${i + 1}" value="${v}"
+                onfocus="this.select()" onchange="guardarEvaluacion(${id}, this)"></td>`;
+    }).join('');
+    return `
+      <div class="table-responsive mt-2">
+        <table class="table table-bordered table-sm mb-0 text-center align-middle" style="font-size:.78rem;">
+          <thead><tr class="table-light"><th class="text-start">${data.anio}</th>${NOMBRES_MESES.map(n => `<th>${n}</th>`).join('')}<th>Total</th><th>% Cumpl.</th></tr></thead>
+          <tbody>
+            <tr><td class="text-start fw-semibold">Programado</td>${celdas('programado')}<td class="fw-semibold" id="evTotP_${id}"></td><td class="fw-bold" rowspan="2" id="evPct_${id}"></td></tr>
+            <tr><td class="text-start fw-semibold">Realizado</td>${celdas('realizado')}<td class="fw-semibold" id="evTotR_${id}"></td></tr>
+          </tbody>
+        </table>
+      </div>`;
+  };
 
   const filaIndicador = (ind) => `
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 border rounded p-2 mb-2 bg-white">
-      <div>
-        <div class="fw-semibold">${ind.descripcion}</div>
-        <div class="text-muted" style="font-size:.78rem;">Unidad: ${ind.unidad_medida}</div>
+    <div class="border rounded p-2 mb-2 bg-white">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <div class="fw-semibold">${ind.descripcion}</div>
+          <div class="text-muted" style="font-size:.78rem;">Unidad: ${ind.unidad_medida}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarIndicador(${ind.id_indicador}, ${idPrograma})" title="Eliminar">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
       </div>
-      <div class="d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirCalendario(${ind.id_indicador}, '${ind.descripcion.replace(/'/g, "\\'")}', ${idPrograma})" title="Calendario">
-          <i class="bi bi-calendar3"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarIndicador(${ind.id_indicador}, ${idPrograma})" title="Eliminar">
-          <i class="bi bi-trash"></i>
-        </button>
-      </div>
+      ${tablaEvaluacion(ind)}
     </div>`;
 
-  let html = '';
+  let html = `<div class="d-flex align-items-center gap-2 mt-2">
+                <label class="form-label fw-semibold mb-0">Año de evaluación:</label>
+                <select class="form-select form-select-sm" style="width:auto;" onchange="anioIndicadorActual = parseInt(this.value); cargarIndicadoresPrograma(${idPrograma})">
+                  ${[data.anio - 1, data.anio, data.anio + 1].map(a => `<option value="${a}" ${a === data.anio ? 'selected' : ''}>${a}</option>`).join('')}
+                </select>
+                <span class="text-muted" style="font-size:.78rem;">Escribe 1 si se cumplió o 0 si no; se guarda solo al cambiar de celda.</span>
+              </div>`;
 
   html += `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 mb-2">
               <h6 class="fw-bold mb-0" style="color:#0A2647;">Fin</h6>
@@ -206,6 +238,46 @@ function renderIndicadoresPrograma(idPrograma, data) {
   });
 
   cont.innerHTML = html;
+  ids.forEach(recalcularEvaluacion);
+}
+
+// Total y % de cumplimiento (realizado / programado) de un indicador, con lo que hay en sus celdas.
+function recalcularEvaluacion(id) {
+  let totalP = 0, totalR = 0;
+  document.querySelectorAll('.eval-' + id).forEach(inp => {
+    const v = parseFloat(inp.value) || 0;
+    if (inp.dataset.campo === 'programado') totalP += v; else totalR += v;
+  });
+  const fmt = v => Math.round(v * 100) / 100;
+  document.getElementById('evTotP_' + id).textContent = fmt(totalP);
+  document.getElementById('evTotR_' + id).textContent = fmt(totalR);
+  const pct = document.getElementById('evPct_' + id);
+  pct.textContent = totalP > 0 ? Math.round(totalR / totalP * 100) + '%' : '-';
+  pct.style.color = totalP === 0 ? '' : (totalR >= totalP ? '#1a6b3c' : (totalR > 0 ? '#b8860b' : '#c0392b'));
+}
+
+// Guarda los 12 meses del indicador (mismo endpoint que el calendario) y marca la celda en verde o rojo.
+function guardarEvaluacion(id, celda) {
+  const formData = new FormData();
+  formData.append('id_indicador', id);
+  formData.append('anio', anioIndicadorActual);
+  document.querySelectorAll('.eval-' + id).forEach(inp => {
+    formData.append(inp.dataset.campo + '_' + inp.dataset.mes, inp.value || 0);
+  });
+  recalcularEvaluacion(id);
+
+  const marcar = (color) => {
+    celda.style.backgroundColor = color;
+    setTimeout(() => { celda.style.backgroundColor = ''; }, 1200);
+  };
+
+  fetch('Php/controlador.php?idopc=GuardarCalendario&ops=', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(res => { if (res.ok) marcar('#d4f5e0'); else throw new Error(); })
+    .catch(() => {
+      marcar('#f8d7da');
+      Swal.fire({ title: 'No se guardó la evaluación', text: 'Es posible que tu sesión se haya cerrado. Vuelve a iniciar sesión e inténtalo de nuevo.', icon: 'error' });
+    });
 }
 
 function abrirFormIndicador(idPrograma, tipo, idPadre) {
@@ -279,12 +351,14 @@ function abrirCalendario(idIndicador, descripcion, idPrograma) {
       const modalTitulo = document.querySelector('#ModalUnificado .modal-title');
       if (modalTitulo) modalTitulo.innerHTML = `<i class="bi bi-calendar3 me-2"></i>Calendario — ${descripcion}`;
 
+      // parseFloat: la BD regresa "0.00"; si se muestra así, al escribir 1 queda "0.001" y se guarda como 0.
+      // onfocus select(): al entrar al campo se selecciona el valor y lo que se escribe lo reemplaza.
       let filas = '';
       data.meses.forEach(m => {
         filas += `<tr>
           <td class="fw-semibold">${NOMBRES_MESES[m.mes - 1]}</td>
-          <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" id="programado_${m.mes}" value="${m.programado}"></td>
-          <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" id="realizado_${m.mes}" value="${m.realizado}"></td>
+          <td><input type="number" step="any" min="0" class="form-control form-control-sm" id="programado_${m.mes}" value="${parseFloat(m.programado) || 0}" onfocus="this.select()"></td>
+          <td><input type="number" step="any" min="0" class="form-control form-control-sm" id="realizado_${m.mes}" value="${parseFloat(m.realizado) || 0}" onfocus="this.select()"></td>
         </tr>`;
       });
 
@@ -312,9 +386,10 @@ function abrirCalendario(idIndicador, descripcion, idPrograma) {
         abrirCalendario(idIndicador, descripcion, idPrograma);
       });
 
-      const modal = new bootstrap.Modal(document.getElementById('ModalUnificado'));
-      modal.show();
-    });
+      // getOrCreateInstance: con "new" cada cambio de año apilaba otro modal y dejaba el fondo gris bloqueando la pantalla.
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('ModalUnificado')).show();
+    })
+    .catch(() => Swal.fire({ title: 'No se pudo abrir el calendario', text: 'Revisa tu conexión o vuelve a iniciar sesión.', icon: 'error' }));
 }
 
 function guardarCalendarioIndicador(idIndicador, descripcion, idPrograma) {
@@ -332,8 +407,12 @@ function guardarCalendarioIndicador(idIndicador, descripcion, idPrograma) {
       if (res.ok) {
         bootstrap.Modal.getInstance(document.getElementById('ModalUnificado')).hide();
         Swal.fire({ title: 'Calendario guardado', icon: 'success', timer: 1500, showConfirmButton: false });
+      } else {
+        Swal.fire({ title: 'No se pudo guardar', text: res.msg || '', icon: 'warning' });
       }
-    });
+    })
+    // Si la sesión venció, el servidor responde HTML en vez de JSON; antes no se avisaba nada.
+    .catch(() => Swal.fire({ title: 'No se pudo guardar el calendario', text: 'Es posible que tu sesión se haya cerrado. Vuelve a iniciar sesión e inténtalo de nuevo.', icon: 'error' }));
 }
 
 

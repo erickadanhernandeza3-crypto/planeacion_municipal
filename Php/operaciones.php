@@ -612,6 +612,22 @@ function IndicadoresPrograma()
         $resultado['componentes'][] = $c;
     }
 
+    // Calendario del año de todos los indicadores del programa (una sola consulta),
+    // para capturar la evaluación mensual directo en la lista.
+    $anio = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)date('Y');
+    $cal  = $obj->mostrardatos("SELECT ic.id_indicador, ic.mes, ic.programado, ic.realizado
+                                FROM indicador_calendario ic
+                                INNER JOIN indicadores i ON i.id_indicador = ic.id_indicador
+                                WHERE i.id_programa = $id_programa AND ic.anio = $anio");
+    $resultado['anio']       = $anio;
+    $resultado['calendario'] = [];   // id_indicador => mes => {programado, realizado}
+    foreach ($cal as $fila) {
+        $resultado['calendario'][$fila['id_indicador']][(int)$fila['mes']] = [
+            'programado' => (float)$fila['programado'],
+            'realizado'  => (float)$fila['realizado'],
+        ];
+    }
+
     header('Content-Type: application/json');
     echo json_encode($resultado);
     exit;
