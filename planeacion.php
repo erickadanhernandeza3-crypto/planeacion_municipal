@@ -16,6 +16,7 @@ if (!revisarInactividad()) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="<?= htmlspecialchars(tokenCsrf()) ?>">
   <title>Planeación — Sistema Municipal</title>
 
   <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
@@ -26,8 +27,8 @@ if (!revisarInactividad()) {
   <script src="https://cdn.datatables.net/2.3.4/js/dataTables.js"></script>
   <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.6/css/responsive.dataTables.css" />
   <script src="https://cdn.datatables.net/responsive/3.0.6/js/dataTables.responsive.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.0/dist/sweetalert2.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
   <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Seguimiento) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />
@@ -231,38 +232,36 @@ if (!revisarInactividad()) {
 
       <!-- Área de contenido -->
       <div id="contenedor">
-        <!-- Bienvenida y KPIs -->
-        <h4 class="fw-bold mb-1" style="color:#0A2647;">Panel de Planeación</h4>
-        <p class="text-muted mb-4">H. Ayuntamiento de Tamazunchale — <?= date('d/m/Y') ?></p>
+        <!-- Encabezado -->
+        <div class="dash-encabezado">
+          <h4 class="dash-titulo">Panel de Planeación</h4>
+          <p class="dash-sub">H. Ayuntamiento de Tamazunchale &middot; <?= date('d/m/Y') ?></p>
+        </div>
 
         <!-- KPIs -->
         <div class="row g-3 mb-4">
-          <div class="col-6 col-md-3">
-            <div class="p-3 rounded-3 text-white" style="background:linear-gradient(135deg,#0A2647,#14375e);">
-              <i class="bi bi-list-check d-block fs-3 mb-1"></i>
-              <div id="kpiTotal" style="font-size:1.6rem;font-weight:700;">—</div>
-              <div style="font-size:.78rem;opacity:.85;">Total de Metas</div>
+          <div class="col-6 col-xl-3">
+            <div class="kpi" style="--color:#0A2647;">
+              <div class="kpi-etiqueta">Total de metas</div>
+              <div class="kpi-numero" id="kpiTotal">—</div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
-            <div class="p-3 rounded-3 text-white" style="background:linear-gradient(135deg,#1a6b3c,#2fa86a);">
-              <i class="bi bi-check-circle d-block fs-3 mb-1"></i>
-              <div id="kpiCumplidas" style="font-size:1.6rem;font-weight:700;">—</div>
-              <div style="font-size:.78rem;opacity:.85;">Cumplidas</div>
+          <div class="col-6 col-xl-3">
+            <div class="kpi" style="--color:#1a7f4b;">
+              <div class="kpi-etiqueta">Cumplidas</div>
+              <div class="kpi-numero" id="kpiCumplidas">—</div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
-            <div class="p-3 rounded-3 text-white" style="background:linear-gradient(135deg,#7d5a00,#c89b00);">
-              <i class="bi bi-arrow-repeat d-block fs-3 mb-1"></i>
-              <div id="kpiEnProceso" style="font-size:1.6rem;font-weight:700;">—</div>
-              <div style="font-size:.78rem;opacity:.85;">En Proceso</div>
+          <div class="col-6 col-xl-3">
+            <div class="kpi" style="--color:#b7791f;">
+              <div class="kpi-etiqueta">En proceso</div>
+              <div class="kpi-numero" id="kpiEnProceso">—</div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
-            <div class="p-3 rounded-3 text-white" style="background:linear-gradient(135deg,#7b1f1f,#c0392b);">
-              <i class="bi bi-hourglass-split d-block fs-3 mb-1"></i>
-              <div id="kpiPendientes" style="font-size:1.6rem;font-weight:700;">—</div>
-              <div style="font-size:.78rem;opacity:.85;">Pendientes</div>
+          <div class="col-6 col-xl-3">
+            <div class="kpi" style="--color:#b42318;">
+              <div class="kpi-etiqueta">Pendientes</div>
+              <div class="kpi-numero" id="kpiPendientes">—</div>
             </div>
           </div>
         </div>
@@ -270,10 +269,37 @@ if (!revisarInactividad()) {
         <!-- Aviso de metas vencidas / por vencer (lo llena cargarAvisoAlertas) -->
         <div id="avisoAlertas"></div>
 
-        <p class="text-muted" style="font-size:.85rem;">
-          <i class="bi bi-arrow-left-circle me-1"></i>
-          Usa el menú lateral para registrar metas, ver el histórico o la evaluación visual.
-        </p>
+        <!-- Resumen por estado -->
+        <div class="card">
+          <div class="card-body">
+            <h6 class="dash-seccion">Estado de las metas</h6>
+            <table class="tabla-resumen">
+              <thead>
+                <tr><th>Estado</th><th class="text-end">Metas</th><th class="text-end">Porcentaje</th><th class="col-barra"></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cumplidas</td>
+                  <td class="text-end" id="resCumplidas">0</td>
+                  <td class="text-end" id="pctCumplidas">0%</td>
+                  <td class="col-barra"><div class="barra"><span id="barCumplidas" style="background:#1a7f4b;"></span></div></td>
+                </tr>
+                <tr>
+                  <td>En proceso</td>
+                  <td class="text-end" id="resEnProceso">0</td>
+                  <td class="text-end" id="pctEnProceso">0%</td>
+                  <td class="col-barra"><div class="barra"><span id="barEnProceso" style="background:#b7791f;"></span></div></td>
+                </tr>
+                <tr>
+                  <td>Pendientes</td>
+                  <td class="text-end" id="resPendientes">0</td>
+                  <td class="text-end" id="pctPendientes">0%</td>
+                  <td class="col-barra"><div class="barra"><span id="barPendientes" style="background:#b42318;"></span></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
       <!-- Fin contenedor -->
 
@@ -284,7 +310,7 @@ if (!revisarInactividad()) {
 </div>
 
 <script>
-// Cargar KPIs al abrir la página
+// Cargar KPIs y resumen por estado al abrir la página
 fetch('Php/controlador.php?idopc=DatosGraficaEstados&ops=&idr=0&msg=0')
   .then(r => r.json())
   .then(data => {
@@ -295,10 +321,19 @@ fetch('Php/controlador.php?idopc=DatosGraficaEstados&ops=&idr=0&msg=0')
       if (e === 'En Proceso') proceso    = parseInt(data.totales[i]);
       if (e === 'Pendiente')  pendientes = parseInt(data.totales[i]);
     });
-    document.getElementById('kpiTotal').textContent     = total;
-    document.getElementById('kpiCumplidas').textContent = cumplidas;
-    document.getElementById('kpiEnProceso').textContent = proceso;
-    document.getElementById('kpiPendientes').textContent = pendientes;
+    const pct = n => total ? Math.round(n * 100 / total) : 0;
+    const poner = (id, valor) => document.getElementById(id).textContent = valor;
+
+    poner('kpiTotal', total);
+    poner('kpiCumplidas', cumplidas);
+    poner('kpiEnProceso', proceso);
+    poner('kpiPendientes', pendientes);
+
+    [['Cumplidas', cumplidas], ['EnProceso', proceso], ['Pendientes', pendientes]].forEach(([clave, n]) => {
+      poner('res' + clave, n);
+      poner('pct' + clave, pct(n) + '%');
+      document.getElementById('bar' + clave).style.width = pct(n) + '%';
+    });
   }).catch(() => {});
 
 // Aviso de alertas de vencimiento

@@ -1,9 +1,45 @@
 /*
  * FUNCIONES COMPARTIDAS POR LOS DOS PANELES (administrador y planeación)
+ * 0. Token CSRF en cada petición al controlador
  * 1. Cierre de sesión por inactividad (con aviso 2 minutos antes)
  * 2. Menú lateral para celular (botón ☰)
  * 3. Gráfica del comparativo trimestral
  */
+
+
+/////////////////////// 0. Token CSRF ///////////////////////
+// El panel trae el token en <meta name="csrf-token">. Aquí se agrega solo a TODAS las
+// peticiones al controlador (fetch, XMLHttpRequest y DataTables/jQuery, que usa XHR),
+// así ninguna función tiene que acordarse de mandarlo. Sin el token el servidor responde 403.
+(function () {
+  const meta  = document.querySelector('meta[name="csrf-token"]');
+  const token = meta ? meta.content : '';
+  if (!token) return;
+  const vaAlControlador = url => String(url).indexOf('Php/controlador.php') !== -1;
+
+  const fetchOriginal = window.fetch;
+  window.fetch = function (recurso, opciones) {
+    const url = (recurso instanceof Request) ? recurso.url : recurso;
+    if (vaAlControlador(url)) {
+      opciones = Object.assign({}, opciones);
+      const cabeceras = new Headers(opciones.headers || (recurso instanceof Request ? recurso.headers : undefined));
+      cabeceras.set('X-CSRF-Token', token);
+      opciones.headers = cabeceras;
+    }
+    return fetchOriginal.call(this, recurso, opciones);
+  };
+
+  const abrirOriginal  = XMLHttpRequest.prototype.open;
+  const enviarOriginal = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (metodo, url) {
+    this._alControlador = vaAlControlador(url);
+    return abrirOriginal.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function () {
+    if (this._alControlador) this.setRequestHeader('X-CSRF-Token', token);
+    return enviarOriginal.apply(this, arguments);
+  };
+})();
 
 
 /////////////////////// 1. Sesión por inactividad ///////////////////////
@@ -74,6 +110,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   document.body.append(boton, fondo);
+
+  // Resalta la opción del menú que se eligió (al cargar, "Inicio")
+  if (menu) {
+    const enlaces = menu.querySelectorAll('a.nav-link:not([data-bs-toggle])');
+    if (enlaces.length) enlaces[0].classList.add('activo');
+    menu.addEventListener('click', e => {
+      const enlace = e.target.closest('a.nav-link');
+      if (!enlace || enlace.hasAttribute('data-bs-toggle')) return;
+      enlaces.forEach(a => a.classList.remove('activo'));
+      enlace.classList.add('activo');
+    });
+  }
 });
 
 

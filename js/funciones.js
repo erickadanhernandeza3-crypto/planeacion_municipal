@@ -1,44 +1,79 @@
+/////////////////////// Utilidades ///////////////////////
+// Escapa texto para meterlo en HTML (evita que un nombre con <script> se ejecute).
+function escapar(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Columna de DataTables que muestra el dato como texto (no como HTML).
+const comoTexto = (dato, tipo) => tipo === 'display' ? escapar(dato) : dato;
+
+// Respuesta de error del servidor:
+//  - Texto plano (validaciones, permisos, errores): se muestra en una alerta y no se toca la pantalla.
+//  - HTML (sesión vencida): se pinta en el contenedor, trae el enlace para volver a entrar.
+function mostrarErrorServidor(contenedor, tipoContenido, texto) {
+  if ((tipoContenido || '').indexOf('text/plain') !== -1) {
+    Swal.fire({ title: 'No se pudo completar', text: texto, icon: 'warning', confirmButtonColor: '#0A2647' });
+  } else if (contenedor) {
+    contenedor.innerHTML = texto;
+  }
+}
+
+
+// Los formularios del sistema se envían por fetch (EnviarDatos). Sin esto, el botón
+// "Guardar" (type="submit") además recargaba la página y podía cortar el guardado.
+// Los formularios con action propio (como el login) no se tocan.
+document.addEventListener('submit', function (e) {
+  if (!e.target.getAttribute('action')) e.preventDefault();
+});
+
+
 /////////////////////// Función Buscar ///////////////////////
 function buscar(idopc, iddiv, ops, idr, msg) {
-  contenedor = seleccionardiv(iddiv);
-  console.log(idopc, iddiv, ops, idr);
+  const contenedor = seleccionardiv(iddiv);
 
   const xhr = new XMLHttpRequest();
-  xhr.open("GET", "Php/controlador.php?idopc=" + idopc + "&ops=" + ops + "&idr=" + idr + "&msg=" + msg);
+  xhr.open("GET", "Php/controlador.php?idopc=" + encodeURIComponent(idopc) + "&ops=" + encodeURIComponent(ops)
+                + "&idr=" + encodeURIComponent(idr) + "&msg=" + encodeURIComponent(msg));
   xhr.onreadystatechange = function () {
-    if (xhr.readyState == 4 && xhr.status == 200) {
-
-      contenedor.innerHTML = xhr.responseText;
-      console.log(xhr.responseText);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      if (msg) mensajes(msg);
-
-      switch (idopc) {
-        case 'EstructuraTbEjes':
-        case 'OpsEjes':
-          inicializarDataTable('#TBEjes', 'DatosEjes', columnasEjes);
-          break;
-        case 'EstructuraTbProgramas':
-        case 'OpsProgramas':
-          inicializarDataTable('#TBProgramas', 'DatosProgramas', columnasProgramas);
-          break;
-        case 'EstructuraTbMetas':
-        case 'OpsMetas':
-          inicializarDataTable('#TBMetas', 'DatosMetas', columnasMetas);
-          break;
-        case 'EstructuraTbUsuarios':
-        case 'OpsUsuarios':
-          inicializarDataTable('#TBUsuarios', 'DatosUsuarios', columnasUsuarios);
-          break;
-        case 'DatosGraficaEjes':
-          graficaEjesBar('DatosGraficaEjesBar');
-          graficaDona('DatosGraficaEstados');
-          graficaPresupuesto('DatosGraficaPresupuesto');
-          graficaAvanceProgramas('DatosGraficaAvanceProgramas');
-          graficaCalendario('DatosGraficaCalendario');
-          break;
-      }
+    if (xhr.readyState !== 4) return;
+    if (xhr.status !== 200) {
+      mostrarErrorServidor(contenedor, xhr.getResponseHeader('Content-Type'),
+        xhr.responseText || 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.');
+      return;
     }
+
+    contenedor.innerHTML = xhr.responseText;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (msg) mensajes(msg);
+
+    switch (idopc) {
+      case 'EstructuraTbEjes':
+      case 'OpsEjes':
+        inicializarDataTable('#TBEjes', 'DatosEjes', columnasEjes);
+        break;
+      case 'EstructuraTbProgramas':
+      case 'OpsProgramas':
+        inicializarDataTable('#TBProgramas', 'DatosProgramas', columnasProgramas);
+        break;
+      case 'EstructuraTbMetas':
+      case 'OpsMetas':
+        inicializarDataTable('#TBMetas', 'DatosMetas', columnasMetas);
+        break;
+      case 'EstructuraTbUsuarios':
+      case 'OpsUsuarios':
+        inicializarDataTable('#TBUsuarios', 'DatosUsuarios', columnasUsuarios);
+        break;
+      case 'DatosGraficaEjes':
+        graficaEjesBar('DatosGraficaEjesBar');
+        graficaDona('DatosGraficaEstados');
+        graficaPresupuesto('DatosGraficaPresupuesto');
+        graficaAvanceProgramas('DatosGraficaAvanceProgramas');
+        graficaCalendario('DatosGraficaCalendario');
+        break;
+    }
+  };
+  xhr.onerror = function () {
+    Swal.fire({ title: 'Sin conexión', text: 'No se pudo contactar al servidor. Revisa tu internet e inténtalo de nuevo.', icon: 'error' });
   };
   xhr.send(null);
 }
@@ -46,29 +81,41 @@ function buscar(idopc, iddiv, ops, idr, msg) {
 
 function seleccionardiv(iddiv) {
   switch (iddiv) {
-    case 1: contenedor = document.getElementById('contenedor');      break;
-    case 2: contenedor = document.getElementById('contenedor2');     break;
-    case 3: contenedor = document.getElementById('contenedor3');     break;
-    case 4: contenedor = document.getElementById('contenedorModal'); break;
+    case 1: return document.getElementById('contenedor');
+    case 2: return document.getElementById('contenedor2');
+    case 3: return document.getElementById('contenedor3');
+    case 4: return document.getElementById('contenedorModal');
   }
-  return contenedor;
+  return null;
 }
 
 
 /////////////////////// EnviarDatos (POST) ///////////////////////
 async function EnviarDatos(idopc, iddiv, idform, ops, idr, msg) {
-  contenedor = seleccionardiv(iddiv);
-  form = document.getElementById(idform);
-  const formData = new FormData(form);
-  const response = await fetch('Php/controlador.php?idopc=' + idopc + "&ops=" + ops + "&idr=" + idr + "&msg=" + msg, {
-    method: 'POST',
-    body: formData
-  });
-  const resultado = await response.text();
-  console.log(resultado);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (msg) mensajes(msg);
-  contenedor.innerHTML = resultado;
+  const contenedor = seleccionardiv(iddiv);
+  const form = document.getElementById(idform);
+  const boton = form.querySelector('button[type="submit"]');
+  if (boton) boton.disabled = true;   // evita registros dobles por doble clic
+
+  try {
+    const response = await fetch('Php/controlador.php?idopc=' + encodeURIComponent(idopc) + "&ops=" + encodeURIComponent(ops)
+                                 + "&idr=" + encodeURIComponent(idr) + "&msg=" + encodeURIComponent(msg), {
+      method: 'POST',
+      body: new FormData(form)
+    });
+    const resultado = await response.text();
+    if (!response.ok) {
+      mostrarErrorServidor(contenedor, response.headers.get('Content-Type'), resultado);
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (msg) mensajes(msg);
+    contenedor.innerHTML = resultado;
+  } catch (error) {
+    Swal.fire({ title: 'Sin conexión', text: 'No se pudo contactar al servidor. Revisa tu internet e inténtalo de nuevo.', icon: 'error' });
+  } finally {
+    if (boton && document.body.contains(boton)) boton.disabled = false;
+  }
 }
 
 
@@ -107,7 +154,7 @@ function ValidarUsuarios(idopc, iddiv, idform, ops, idr, msg) {
   const password = document.getElementById('contrasena').value.trim();
   if (nombre === '')   { Swal.fire({ title: "El nombre es obligatorio", icon: "warning" }); return false; }
   if (usuario === '')  { Swal.fire({ title: "El usuario es obligatorio", icon: "warning" }); return false; }
-  if (ops === 'Insert' && password.length < 6) { Swal.fire({ title: "Contraseña mínimo 6 caracteres", icon: "warning" }); return false; }
+  if (ops === 'Insert' && password.length < 8) { Swal.fire({ title: "La contraseña debe tener mínimo 8 caracteres", icon: "warning" }); return false; }
   EnviarDatos(idopc, iddiv, idform, ops, idr, msg);
 }
 
@@ -125,7 +172,7 @@ function cargarProgramasPorEje(idEje) {
     .then(data => {
       let html = '<option value="">Selecciona un programa...</option>';
       data.forEach(p => {
-        html += `<option value="${p.id_programa}">${p.nombre_programa}</option>`;
+        html += `<option value="${p.id_programa}">${escapar(p.nombre_programa)}</option>`;
       });
       selectPrograma.innerHTML = html;
     });
@@ -176,8 +223,8 @@ function renderIndicadoresPrograma(idPrograma, data) {
     <div class="border rounded p-2 mb-2 bg-white">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
-          <div class="fw-semibold">${ind.descripcion}</div>
-          <div class="text-muted" style="font-size:.78rem;">Unidad: ${ind.unidad_medida}</div>
+          <div class="fw-semibold">${escapar(ind.descripcion)}</div>
+          <div class="text-muted" style="font-size:.78rem;">Unidad: ${escapar(ind.unidad_medida)}</div>
         </div>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarIndicador(${ind.id_indicador}, ${idPrograma})" title="Eliminar">
@@ -318,7 +365,8 @@ function abrirFormIndicador(idPrograma, tipo, idPadre) {
         } else {
           Swal.fire({ title: 'No se pudo guardar', text: res.msg || '', icon: 'warning' });
         }
-      });
+      })
+      .catch(() => Swal.fire({ title: 'No se pudo guardar', text: 'Es posible que tu sesión se haya cerrado. Recarga la página e inténtalo de nuevo.', icon: 'error' }));
   });
 }
 
@@ -335,7 +383,11 @@ function eliminarIndicador(idIndicador, idPrograma) {
     if (!result.isConfirmed) return;
     fetch('Php/controlador.php?idopc=OpsIndicadores&ops=DeleteIndicador&idr=' + idIndicador)
       .then(r => r.json())
-      .then(() => cargarIndicadoresPrograma(idPrograma));
+      .then(res => {
+        if (!res.ok) throw new Error();
+        cargarIndicadoresPrograma(idPrograma);
+      })
+      .catch(() => Swal.fire({ title: 'No se pudo eliminar', text: 'Recarga la página e inténtalo de nuevo.', icon: 'error' }));
   });
 }
 
@@ -343,77 +395,6 @@ function eliminarIndicador(idIndicador, idPrograma) {
 /////////////////////// Calendario mensual de un indicador ///////////////////////
 const NOMBRES_MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 let anioIndicadorActual = new Date().getFullYear();
-
-function abrirCalendario(idIndicador, descripcion, idPrograma) {
-  fetch('Php/controlador.php?idopc=FormCalendario&ops=&idr=' + idIndicador + '&anio=' + anioIndicadorActual)
-    .then(r => r.json())
-    .then(data => {
-      const modalTitulo = document.querySelector('#ModalUnificado .modal-title');
-      if (modalTitulo) modalTitulo.innerHTML = `<i class="bi bi-calendar3 me-2"></i>Calendario — ${descripcion}`;
-
-      // parseFloat: la BD regresa "0.00"; si se muestra así, al escribir 1 queda "0.001" y se guarda como 0.
-      // onfocus select(): al entrar al campo se selecciona el valor y lo que se escribe lo reemplaza.
-      let filas = '';
-      data.meses.forEach(m => {
-        filas += `<tr>
-          <td class="fw-semibold">${NOMBRES_MESES[m.mes - 1]}</td>
-          <td><input type="number" step="any" min="0" class="form-control form-control-sm" id="programado_${m.mes}" value="${parseFloat(m.programado) || 0}" onfocus="this.select()"></td>
-          <td><input type="number" step="any" min="0" class="form-control form-control-sm" id="realizado_${m.mes}" value="${parseFloat(m.realizado) || 0}" onfocus="this.select()"></td>
-        </tr>`;
-      });
-
-      const cont = document.getElementById('contenedorModal');
-      cont.innerHTML = `
-        <div class="d-flex align-items-center gap-2 mb-3">
-          <label class="form-label fw-semibold mb-0">Año:</label>
-          <select class="form-select form-select-sm" style="width:auto;" id="anioCalendario">
-            ${[data.anio - 1, data.anio, data.anio + 1].map(a => `<option value="${a}" ${a === data.anio ? 'selected' : ''}>${a}</option>`).join('')}
-          </select>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-bordered table-sm">
-            <thead><tr><th>Mes</th><th>Programado</th><th>Realizado</th></tr></thead>
-            <tbody id="filasCalendario">${filas}</tbody>
-          </table>
-        </div>
-        <button type="button" class="btn btn-primary w-100" onclick="guardarCalendarioIndicador(${idIndicador}, '${descripcion.replace(/'/g, "\\'")}', ${idPrograma})">
-          <i class="bi bi-floppy me-1"></i> Guardar Calendario
-        </button>
-      `;
-
-      document.getElementById('anioCalendario').addEventListener('change', function () {
-        anioIndicadorActual = parseInt(this.value);
-        abrirCalendario(idIndicador, descripcion, idPrograma);
-      });
-
-      // getOrCreateInstance: con "new" cada cambio de año apilaba otro modal y dejaba el fondo gris bloqueando la pantalla.
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('ModalUnificado')).show();
-    })
-    .catch(() => Swal.fire({ title: 'No se pudo abrir el calendario', text: 'Revisa tu conexión o vuelve a iniciar sesión.', icon: 'error' }));
-}
-
-function guardarCalendarioIndicador(idIndicador, descripcion, idPrograma) {
-  const formData = new FormData();
-  formData.append('id_indicador', idIndicador);
-  formData.append('anio', anioIndicadorActual);
-  for (let m = 1; m <= 12; m++) {
-    formData.append('programado_' + m, document.getElementById('programado_' + m).value || 0);
-    formData.append('realizado_' + m, document.getElementById('realizado_' + m).value || 0);
-  }
-
-  fetch('Php/controlador.php?idopc=GuardarCalendario&ops=', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(res => {
-      if (res.ok) {
-        bootstrap.Modal.getInstance(document.getElementById('ModalUnificado')).hide();
-        Swal.fire({ title: 'Calendario guardado', icon: 'success', timer: 1500, showConfirmButton: false });
-      } else {
-        Swal.fire({ title: 'No se pudo guardar', text: res.msg || '', icon: 'warning' });
-      }
-    })
-    // Si la sesión venció, el servidor responde HTML en vez de JSON; antes no se avisaba nada.
-    .catch(() => Swal.fire({ title: 'No se pudo guardar el calendario', text: 'Es posible que tu sesión se haya cerrado. Vuelve a iniciar sesión e inténtalo de nuevo.', icon: 'error' }));
-}
 
 
 /////////////////////// Confirmación de Eliminación ///////////////////////
@@ -484,7 +465,7 @@ function inicializarDataTable(selector, idopc, columnas, extra) {
 // ─── EJES ───
 const columnasEjes = [
   { "data": "id_eje" },
-  { "data": "nombre_eje" },
+  { "data": "nombre_eje", "render": comoTexto },
   {
     "data": "id_eje",
     "render": function (idr) {
@@ -509,9 +490,9 @@ const columnasEjes = [
 // ─── PROGRAMAS ───
 const columnasProgramas = [
   { "data": "id_programa" },
-  { "data": "nombre_programa" },
-  { "data": "nombre_eje" },
-  { "data": "responsable" },
+  { "data": "nombre_programa", "render": comoTexto },
+  { "data": "nombre_eje", "render": comoTexto },
+  { "data": "responsable", "render": comoTexto },
   {
     "data": "id_programa",
     "render": function (idr) {
@@ -536,12 +517,12 @@ const columnasProgramas = [
 // ─── METAS ───
 const columnasMetas = [
   { "data": "id_meta" },
-  { "data": "nombre_eje" },
-  { "data": "nombre_programa" },
-  { "data": "actividad" },
-  { "data": "unidad_medida" },
-  { "data": "meta_programada" },
-  { "data": "meta_alcanzada" },
+  { "data": "nombre_eje", "render": comoTexto },
+  { "data": "nombre_programa", "render": comoTexto },
+  { "data": "actividad", "render": comoTexto },
+  { "data": "unidad_medida", "render": comoTexto },
+  { "data": "meta_programada", "render": comoTexto },
+  { "data": "meta_alcanzada", "render": comoTexto },
   {
     "data": "avance",
     "render": function (avance) {
@@ -551,7 +532,7 @@ const columnasMetas = [
         <div style="flex:1;background:#e9ecef;border-radius:10px;height:7px;">
           <div style="width:${Math.min(num,100)}%;background:${color};height:7px;border-radius:10px;"></div>
         </div>
-        <span style="font-size:.75rem;font-weight:700;color:${color};min-width:40px;">${avance}</span>
+        <span style="font-size:.75rem;font-weight:700;color:${color};min-width:40px;">${escapar(avance)}</span>
       </div>`;
     }
   },
@@ -560,10 +541,10 @@ const columnasMetas = [
     "render": function (estado) {
       const c = { 'Terminado': '#1a6b3c:#d4f4e2', 'En Proceso': '#7d5a00:#fff3cd', 'Pendiente': '#7b1f1f:#fde8e8' };
       const [text, bg] = (c[estado] || '#333:#eee').split(':');
-      return `<span style="background:${bg};color:${text};font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${estado}</span>`;
+      return `<span style="background:${bg};color:${text};font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${escapar(estado)}</span>`;
     }
   },
-  { "data": "fecha_inicio" },
+  { "data": "fecha_inicio", "render": comoTexto },
   {
     "data": "id_meta",
     "render": function (idr) {
@@ -588,13 +569,13 @@ const columnasMetas = [
 // ─── USUARIOS ───
 const columnasUsuarios = [
   { "data": "id_usuario" },
-  { "data": "nombre" },
-  { "data": "usuario" },
+  { "data": "nombre", "render": comoTexto },
+  { "data": "usuario", "render": comoTexto },
   {
     "data": "rol",
     "render": function (rol) {
       const c = rol === 'administrador' ? 'background:#e8eef7;color:#0A2647;' : 'background:#fff3cd;color:#7d5a00;';
-      return `<span style="${c}font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${rol}</span>`;
+      return `<span style="${c}font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${escapar(rol)}</span>`;
     }
   },
   {
@@ -755,14 +736,14 @@ function graficaCalendario(idopc) {
 
 // ─── AVANCE ───
 const columnasAvance = [
-  { "data": "nombre_eje" },
-  { "data": "nombre_programa" },
+  { "data": "nombre_eje", "render": comoTexto },
+  { "data": "nombre_programa", "render": comoTexto },
   {
     "data": "estatus",
     "render": function (estatus) {
       const c = { 'Completo': '#1a6b3c:#d4f4e2', 'En proceso': '#7d5a00:#fff3cd', 'Sin iniciar': '#555:#e9ecef' };
       const [text, bg] = (c[estatus] || '#333:#eee').split(':');
-      return `<span style="background:${bg};color:${text};font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${estatus}</span>`;
+      return `<span style="background:${bg};color:${text};font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${escapar(estatus)}</span>`;
     }
   }
 ];

@@ -712,12 +712,12 @@ function FormularioContrasena()
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Nueva contraseña <span class="text-danger">*</span></label>
-                    <input type="password" class="form-control" name="nueva" id="pass_nueva" minlength="6" required autocomplete="new-password">
-                    <div class="form-text">Mínimo 6 caracteres.</div>
+                    <input type="password" class="form-control" name="nueva" id="pass_nueva" minlength="8" required autocomplete="new-password">
+                    <div class="form-text">Mínimo 8 caracteres.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Confirmar nueva contraseña <span class="text-danger">*</span></label>
-                    <input type="password" class="form-control" name="confirmar" id="pass_confirmar" minlength="6" required autocomplete="new-password">
+                    <input type="password" class="form-control" name="confirmar" id="pass_confirmar" minlength="8" required autocomplete="new-password">
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar contraseña</button>
             </form>
@@ -735,7 +735,7 @@ function GuardarContrasena()
     $nueva      = trim($_POST['nueva'] ?? '');
     $confirmar  = trim($_POST['confirmar'] ?? '');
 
-    if (strlen($nueva) < 6)   responderJson(['ok' => false, 'mensaje' => 'La nueva contraseña debe tener al menos 6 caracteres.']);
+    if (mb_strlen($nueva) < MINIMO_CONTRASENA) responderJson(['ok' => false, 'mensaje' => 'La nueva contraseña debe tener al menos ' . MINIMO_CONTRASENA . ' caracteres.']);
     if ($nueva !== $confirmar) responderJson(['ok' => false, 'mensaje' => 'La confirmación no coincide.']);
 
     $filas = consultarPreparado("SELECT contrasena FROM usuarios WHERE id_usuario = ?", 'i', [$id_usuario]);

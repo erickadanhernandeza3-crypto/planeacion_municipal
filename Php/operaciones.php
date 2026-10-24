@@ -92,40 +92,40 @@ switch ($idopc) {
 function crudEjes()
 {
     $ops = $_GET['ops'] ?? '';
-    $idr = $_GET['idr'] ?? 0;
+    $idr = (int)($_GET['idr'] ?? 0);
 
     if ($ops == "Insert") {
-        global $obj;
-        $nombre_eje = strtoupper(trim($_POST['nombre_eje']));
-        $sql = "INSERT INTO ejes (nombre_eje) VALUES ('$nombre_eje')";
-        $obj->guardardatos($sql);
+        $nombre_eje = mb_strtoupper(textoRequerido($_POST['nombre_eje'] ?? '', 'Nombre del eje', 150));
+        try {
+            ejecutarPreparado("INSERT INTO ejes (nombre_eje) VALUES (?)", 's', [$nombre_eje]);
+        } catch (mysqli_sql_exception $error) {
+            if (esDuplicado($error)) rechazar('Ya existe un eje con ese nombre.');
+            throw $error;
+        }
         echo "Eje registrado.";
     }
 
     if ($ops == "Edit") {
-        global $obj;
-        $sql       = "SELECT * FROM ejes WHERE id_eje = $idr";
-        $resultado = $obj->mostrardatos($sql);
+        $resultado = consultarPreparado("SELECT * FROM ejes WHERE id_eje = ?", 'i', [$idr]);
+        if (!$resultado) rechazar('El eje ya no existe.', 404);
         FormularioEjesActualizacion($resultado);
     }
 
     if ($ops == "UpdateEje") {
-        global $obj;
-        $nombre_eje = strtoupper(trim($_POST['nombre_eje']));
-        $sql = "UPDATE ejes SET nombre_eje = '$nombre_eje' WHERE id_eje = $idr";
-        $obj->actualizadatos($sql);
+        $nombre_eje = mb_strtoupper(textoRequerido($_POST['nombre_eje'] ?? '', 'Nombre del eje', 150));
+        try {
+            ejecutarPreparado("UPDATE ejes SET nombre_eje = ? WHERE id_eje = ?", 'si', [$nombre_eje, $idr]);
+        } catch (mysqli_sql_exception $error) {
+            if (esDuplicado($error)) rechazar('Ya existe un eje con ese nombre.');
+            throw $error;
+        }
         echo "Eje actualizado.";
     }
 
     if ($ops == "DeleteEje") {
-        global $obj;
-        // Eliminación en cascada: metas de cada programa del eje, luego los programas, luego el eje
-        $programas = $obj->mostrardatos("SELECT id_programa FROM programas WHERE id_eje = $idr");
-        foreach ($programas as $p) {
-            $obj->eliminardatos("DELETE FROM metas WHERE id_programa = " . (int)$p['id_programa']);
-        }
-        $obj->eliminardatos("DELETE FROM programas WHERE id_eje = $idr");
-        $obj->eliminardatos("DELETE FROM ejes WHERE id_eje = $idr");
+        // La base de datos borra en cascada sus programas, metas, avances,
+        // observaciones e indicadores (llaves foráneas ON DELETE CASCADE).
+        ejecutarPreparado("DELETE FROM ejes WHERE id_eje = ?", 'i', [$idr]);
         MostrarEjes();
     }
 }
@@ -133,48 +133,53 @@ function crudEjes()
 
 ////////////////////// CRUD PROGRAMAS //////////////////////
 
+// Valida y devuelve los campos del formulario de programas.
+function datosFormularioPrograma()
+{
+    $id_eje = (int)($_POST['id_eje'] ?? 0);
+    if (!consultarPreparado("SELECT id_eje FROM ejes WHERE id_eje = ?", 'i', [$id_eje])) {
+        rechazar('Selecciona un eje válido.');
+    }
+    return [
+        $id_eje,
+        textoRequerido($_POST['nombre_programa'] ?? '', 'Nombre del programa', 150),
+        textoOpcional($_POST['responsable'] ?? '', 'Área responsable', 100),
+        textoOpcional($_POST['descripcion'] ?? '', 'Descripción', 2000),
+    ];
+}
+
 function crudProgramas()
 {
     $ops = $_GET['ops'] ?? '';
-    $idr = $_GET['idr'] ?? 0;
+    $idr = (int)($_GET['idr'] ?? 0);
 
     if ($ops == "Insert") {
-        global $obj;
-        $id_eje          = $_POST['id_eje'];
-        $nombre_programa = trim($_POST['nombre_programa']);
-        $responsable     = trim($_POST['responsable']);
-        $descripcion     = trim($_POST['descripcion']);
-        $sql = "INSERT INTO programas (id_eje, nombre_programa, responsable, descripcion)
-                VALUES ($id_eje, '$nombre_programa', '$responsable', '$descripcion')";
-        $obj->guardardatos($sql);
+        [$id_eje, $nombre, $responsable, $descripcion] = datosFormularioPrograma();
+        ejecutarPreparado(
+            "INSERT INTO programas (id_eje, nombre_programa, responsable, descripcion) VALUES (?, ?, ?, ?)",
+            'isss', [$id_eje, $nombre, $responsable, $descripcion]
+        );
         echo "Programa registrado.";
     }
 
     if ($ops == "Edit") {
-        global $obj;
-        $sql       = "SELECT * FROM programas WHERE id_programa = $idr";
-        $resultado = $obj->mostrardatos($sql);
+        $resultado = consultarPreparado("SELECT * FROM programas WHERE id_programa = ?", 'i', [$idr]);
+        if (!$resultado) rechazar('El programa ya no existe.', 404);
         FormularioProgramasActualizacion($resultado);
     }
 
     if ($ops == "UpdatePrograma") {
-        global $obj;
-        $id_eje          = $_POST['id_eje'];
-        $nombre_programa = trim($_POST['nombre_programa']);
-        $responsable     = trim($_POST['responsable']);
-        $descripcion     = trim($_POST['descripcion']);
-        $sql = "UPDATE programas SET id_eje = $id_eje, nombre_programa = '$nombre_programa',
-                responsable = '$responsable', descripcion = '$descripcion'
-                WHERE id_programa = $idr";
-        $obj->actualizadatos($sql);
+        [$id_eje, $nombre, $responsable, $descripcion] = datosFormularioPrograma();
+        ejecutarPreparado(
+            "UPDATE programas SET id_eje = ?, nombre_programa = ?, responsable = ?, descripcion = ? WHERE id_programa = ?",
+            'isssi', [$id_eje, $nombre, $responsable, $descripcion, $idr]
+        );
         echo "Programa actualizado.";
     }
 
     if ($ops == "DeletePrograma") {
-        global $obj;
-        // Eliminación en cascada: primero las metas del programa, luego el programa
-        $obj->eliminardatos("DELETE FROM metas WHERE id_programa = $idr");
-        $obj->eliminardatos("DELETE FROM programas WHERE id_programa = $idr");
+        // En cascada: metas, avances, observaciones e indicadores del programa.
+        ejecutarPreparado("DELETE FROM programas WHERE id_programa = ?", 'i', [$idr]);
         MostrarProgramas();
     }
 }
@@ -182,97 +187,74 @@ function crudProgramas()
 
 ////////////////////// CRUD METAS //////////////////////
 
+// Valida y devuelve los campos del formulario de metas (el estado se calcula solo).
+function datosFormularioMeta()
+{
+    $id_programa = (int)($_POST['id_programa'] ?? 0);
+    if (!consultarPreparado("SELECT id_programa FROM programas WHERE id_programa = ?", 'i', [$id_programa])) {
+        rechazar('Selecciona un programa válido.');
+    }
+    $actividad       = textoRequerido($_POST['actividad'] ?? '', 'Actividad / Meta', 255);
+    $unidad_medida   = textoRequerido($_POST['unidad_medida'] ?? '', 'Unidad de medida', 80);
+    $meta_programada = numeroNoNegativo($_POST['meta_programada'] ?? '', 'Meta programada');
+    if ($meta_programada <= 0) rechazar('La meta programada debe ser mayor a cero.');
+    $meta_alcanzada  = numeroNoNegativo($_POST['meta_alcanzada'] ?? '0', 'Meta alcanzada');
+    $fecha_inicio    = fechaValida($_POST['fecha_inicio'] ?? '', 'Fecha de inicio', true);
+    $fecha_limite    = fechaValida($_POST['fecha_limite'] ?? '', 'Fecha límite');
+    if ($fecha_limite !== null && $fecha_limite < $fecha_inicio) {
+        rechazar('La fecha límite no puede ser anterior a la fecha de inicio.');
+    }
+    $asignado      = numeroNoNegativo($_POST['presupuesto_asignado'] ?? '', 'Presupuesto asignado', true);
+    $ejercido      = numeroNoNegativo($_POST['presupuesto_ejercido'] ?? '', 'Presupuesto ejercido', true);
+    $observaciones = textoOpcional($_POST['observaciones'] ?? '', 'Observaciones', 5000);
+    $estado        = calcularEstado($meta_programada, $meta_alcanzada);
+
+    return [$id_programa, $actividad, $unidad_medida, $meta_programada, $meta_alcanzada,
+            $asignado, $ejercido, $observaciones, $fecha_inicio, $fecha_limite, $estado];
+}
+
 function crudMetas()
 {
     $ops = $_GET['ops'] ?? '';
-    $idr = $_GET['idr'] ?? 0;
+    $idr = (int)($_GET['idr'] ?? 0);
 
     if ($ops == "Insert") {
-        global $obj;
-        $id_programa          = (int)$_POST['id_programa'];
-        $actividad            = trim($_POST['actividad']);
-        $unidad_medida        = trim($_POST['unidad_medida']);
-        $meta_programada      = (float)$_POST['meta_programada'];
-        $meta_alcanzada       = (float)$_POST['meta_alcanzada'];
-        $fecha_inicio         = $_POST['fecha_inicio'];
-        $fecha_limite         = $_POST['fecha_limite'] ?: 'NULL';
-        $presupuesto_asignado = (float)($_POST['presupuesto_asignado'] ?? 0);
-        $presupuesto_ejercido = (float)($_POST['presupuesto_ejercido'] ?? 0);
-        $observaciones        = trim($_POST['observaciones']);
-        $id_usuario           = $_SESSION['id_usuario'] ?? 1;
-
-        // Calcular estado automáticamente
-        if ($meta_programada > 0) {
-            $avance = ($meta_alcanzada / $meta_programada) * 100;
-            if ($avance >= 100)  $estado = 'Terminado';
-            elseif ($avance > 0) $estado = 'En Proceso';
-            else                 $estado = 'Pendiente';
-        } else {
-            $estado = 'Pendiente';
-        }
-
-        $fecha_limite_sql = ($fecha_limite === 'NULL') ? 'NULL' : "'$fecha_limite'";
-
-        $sql = "INSERT INTO metas
+        $datos   = datosFormularioMeta();
+        $datos[] = $_SESSION['id_usuario'] ?? null;
+        ejecutarPreparado(
+            "INSERT INTO metas
                 (id_programa, actividad, unidad_medida, meta_programada, meta_alcanzada,
                  presupuesto_asignado, presupuesto_ejercido, observaciones,
                  fecha_inicio, fecha_limite, estado, creado_por)
-                VALUES
-                ($id_programa, '$actividad', '$unidad_medida', $meta_programada, $meta_alcanzada,
-                 $presupuesto_asignado, $presupuesto_ejercido, '$observaciones',
-                 '$fecha_inicio', $fecha_limite_sql, '$estado', $id_usuario)";
-
-        $obj->guardardatos($sql);
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            'issddddssssi', $datos
+        );
         echo "Meta registrada.";
     }
 
     if ($ops == "Edit") {
-        global $obj;
-        $sql       = "SELECT * FROM metas WHERE id_meta = $idr";
-        $resultado = $obj->mostrardatos($sql);
+        $resultado = consultarPreparado("SELECT * FROM metas WHERE id_meta = ?", 'i', [$idr]);
+        if (!$resultado) rechazar('La meta ya no existe.', 404);
         FormularioMetasActualizacion($resultado);
     }
 
     if ($ops == "UpdateMeta") {
-        global $obj;
-        $id_programa          = (int)$_POST['id_programa'];
-        $actividad            = trim($_POST['actividad']);
-        $unidad_medida        = trim($_POST['unidad_medida']);
-        $meta_programada      = (float)$_POST['meta_programada'];
-        $meta_alcanzada       = (float)$_POST['meta_alcanzada'];
-        $fecha_inicio         = $_POST['fecha_inicio'];
-        $fecha_limite         = $_POST['fecha_limite'] ?: null;
-        $presupuesto_asignado = (float)($_POST['presupuesto_asignado'] ?? 0);
-        $presupuesto_ejercido = (float)($_POST['presupuesto_ejercido'] ?? 0);
-        $observaciones        = trim($_POST['observaciones']);
-
-        if ($meta_programada > 0) {
-            $avance = ($meta_alcanzada / $meta_programada) * 100;
-            if ($avance >= 100)  $estado = 'Terminado';
-            elseif ($avance > 0) $estado = 'En Proceso';
-            else                 $estado = 'Pendiente';
-        } else {
-            $estado = 'Pendiente';
-        }
-
-        $fecha_limite_sql = $fecha_limite ? "'$fecha_limite'" : 'NULL';
-
-        $sql = "UPDATE metas SET
-                id_programa = $id_programa, actividad = '$actividad',
-                unidad_medida = '$unidad_medida', meta_programada = $meta_programada,
-                meta_alcanzada = $meta_alcanzada, presupuesto_asignado = $presupuesto_asignado,
-                presupuesto_ejercido = $presupuesto_ejercido, observaciones = '$observaciones',
-                fecha_inicio = '$fecha_inicio', fecha_limite = $fecha_limite_sql, estado = '$estado'
-                WHERE id_meta = $idr";
-
-        $obj->actualizadatos($sql);
+        $datos   = datosFormularioMeta();
+        $datos[] = $idr;
+        ejecutarPreparado(
+            "UPDATE metas SET
+                id_programa = ?, actividad = ?, unidad_medida = ?, meta_programada = ?, meta_alcanzada = ?,
+                presupuesto_asignado = ?, presupuesto_ejercido = ?, observaciones = ?,
+                fecha_inicio = ?, fecha_limite = ?, estado = ?
+             WHERE id_meta = ?",
+            'issddddssssi', $datos
+        );
         echo "Meta actualizada.";
     }
 
     if ($ops == "DeleteMeta") {
-        global $obj;
-        $sql = "DELETE FROM metas WHERE id_meta = $idr";
-        $obj->eliminardatos($sql);
+        // En cascada: sus avances y observaciones.
+        ejecutarPreparado("DELETE FROM metas WHERE id_meta = ?", 'i', [$idr]);
         MostrarMetas();
     }
 }
@@ -280,55 +262,113 @@ function crudMetas()
 
 ////////////////////// CRUD USUARIOS //////////////////////
 
+// Valida y devuelve nombre, usuario y rol del formulario de usuarios.
+function datosFormularioUsuario()
+{
+    $nombre  = textoRequerido($_POST['nombre'] ?? '', 'Nombre completo', 100);
+    $usuario = textoRequerido($_POST['usuario'] ?? '', 'Usuario', 50);
+    if (!preg_match('/^[A-Za-z0-9._-]{3,50}$/', $usuario)) {
+        rechazar('El usuario debe tener de 3 a 50 caracteres: letras sin acento, números, punto, guion o guion bajo.');
+    }
+    $rol = $_POST['rol'] ?? '';
+    if (!in_array($rol, ROLES_VALIDOS, true)) rechazar('Selecciona un rol válido.');
+    return [$nombre, $usuario, $rol];
+}
+
+function validarContrasenaNueva($password)
+{
+    if (mb_strlen($password) < MINIMO_CONTRASENA) {
+        rechazar('La contraseña debe tener al menos ' . MINIMO_CONTRASENA . ' caracteres.');
+    }
+}
+
+// Cuántos administradores activos hay, sin contar al usuario indicado.
+function otrosAdministradoresActivos($id_usuario)
+{
+    $filas = consultarPreparado(
+        "SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'administrador' AND activo = 1 AND id_usuario <> ?",
+        'i', [$id_usuario]
+    );
+    return (int)$filas[0]['total'];
+}
+
+// true si el usuario indicado es hoy un administrador activo.
+function esAdministradorActivo($id_usuario)
+{
+    $filas = consultarPreparado("SELECT rol, activo FROM usuarios WHERE id_usuario = ?", 'i', [$id_usuario]);
+    return $filas && $filas[0]['rol'] === 'administrador' && (int)$filas[0]['activo'] === 1;
+}
+
 function crudUsuarios()
 {
     $ops = $_GET['ops'] ?? '';
-    $idr = $_GET['idr'] ?? 0;
+    $idr = (int)($_GET['idr'] ?? 0);
 
     if ($ops == "Insert") {
-        global $obj;
-        $nombre    = trim($_POST['nombre']);
-        $usuario   = trim($_POST['usuario']);
-        $password  = password_hash(trim($_POST['contrasena']), PASSWORD_BCRYPT);
-        $rol       = $_POST['rol'];
-        $sql = "INSERT INTO usuarios (nombre, usuario, contrasena, rol)
-                VALUES ('$nombre', '$usuario', '$password', '$rol')";
-        $obj->guardardatos($sql);
+        [$nombre, $usuario, $rol] = datosFormularioUsuario();
+        $password = trim((string)($_POST['contrasena'] ?? ''));   // igual que el login, que también recorta espacios
+        validarContrasenaNueva($password);
+        try {
+            ejecutarPreparado(
+                "INSERT INTO usuarios (nombre, usuario, contrasena, rol) VALUES (?, ?, ?, ?)",
+                'ssss', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol]
+            );
+        } catch (mysqli_sql_exception $error) {
+            if (esDuplicado($error)) rechazar('Ese nombre de usuario ya está en uso. Elige otro.');
+            throw $error;
+        }
         echo "Usuario registrado.";
     }
 
     if ($ops == "Edit") {
-        global $obj;
-        $sql       = "SELECT * FROM usuarios WHERE id_usuario = $idr";
-        $resultado = $obj->mostrardatos($sql);
+        $resultado = consultarPreparado("SELECT id_usuario, nombre, usuario, rol, activo FROM usuarios WHERE id_usuario = ?", 'i', [$idr]);
+        if (!$resultado) rechazar('El usuario ya no existe.', 404);
         FormularioUsuariosActualizacion($resultado);
     }
 
     if ($ops == "UpdateUsuario") {
-        global $obj;
-        $nombre   = trim($_POST['nombre']);
-        $usuario  = trim($_POST['usuario']);
-        $rol      = $_POST['rol'];
-        $activo   = (int)$_POST['activo'];
-        $password = trim($_POST['contrasena']);
+        [$nombre, $usuario, $rol] = datosFormularioUsuario();
+        $activo   = ((int)($_POST['activo'] ?? 1)) === 1 ? 1 : 0;
+        $password = trim((string)($_POST['contrasena'] ?? ''));   // igual que el login, que también recorta espacios
 
-        if ($password !== '') {
-            $hash = password_hash($password, PASSWORD_BCRYPT);
-            $sql  = "UPDATE usuarios SET nombre = '$nombre', usuario = '$usuario',
-                     contrasena = '$hash', rol = '$rol', activo = $activo
-                     WHERE id_usuario = $idr";
-        } else {
-            $sql  = "UPDATE usuarios SET nombre = '$nombre', usuario = '$usuario',
-                     rol = '$rol', activo = $activo WHERE id_usuario = $idr";
+        // Que nadie se quite a sí mismo el acceso, y que siempre quede un administrador activo.
+        $pierdeAdmin = ($activo === 0 || $rol !== 'administrador');
+        if ($pierdeAdmin && $idr === (int)$_SESSION['id_usuario']) {
+            rechazar('No puedes desactivarte ni quitarte el rol de administrador a ti mismo.');
         }
-        $obj->actualizadatos($sql);
+        if ($pierdeAdmin && esAdministradorActivo($idr) && otrosAdministradoresActivos($idr) === 0) {
+            rechazar('Debe quedar al menos un administrador activo.');
+        }
+
+        try {
+            if ($password !== '') {
+                validarContrasenaNueva($password);
+                ejecutarPreparado(
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, contrasena = ?, rol = ?, activo = ? WHERE id_usuario = ?",
+                    'ssssii', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol, $activo, $idr]
+                );
+            } else {
+                ejecutarPreparado(
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, activo = ? WHERE id_usuario = ?",
+                    'sssii', [$nombre, $usuario, $rol, $activo, $idr]
+                );
+            }
+        } catch (mysqli_sql_exception $error) {
+            if (esDuplicado($error)) rechazar('Ese nombre de usuario ya está en uso. Elige otro.');
+            throw $error;
+        }
         echo "Usuario actualizado.";
     }
 
     if ($ops == "DeleteUsuario") {
-        global $obj;
-        $sql = "DELETE FROM usuarios WHERE id_usuario = $idr";
-        $obj->eliminardatos($sql);
+        if ($idr === (int)$_SESSION['id_usuario']) {
+            rechazar('No puedes eliminar tu propia cuenta.');
+        }
+        if (esAdministradorActivo($idr) && otrosAdministradoresActivos($idr) === 0) {
+            rechazar('Debe quedar al menos un administrador activo.');
+        }
+        // Sus metas, avances y registros de bitácora se conservan (quedan sin autor).
+        ejecutarPreparado("DELETE FROM usuarios WHERE id_usuario = ?", 'i', [$idr]);
         MostrarUsuarios();
     }
 }
@@ -580,13 +620,11 @@ function DatosGraficaCalendario()
 function ProgramasPorEje()
 {
     // Devuelve en JSON los programas del eje seleccionado
-    global $obj;
     $id_eje = (int)($_GET['idr'] ?? 0);
-    $sql    = "SELECT id_programa, nombre_programa FROM programas WHERE id_eje = $id_eje ORDER BY id_programa ASC";
-    $datos  = $obj->mostrardatos($sql);
-    header('Content-Type: application/json');
-    echo json_encode($datos);
-    exit;
+    responderJson(consultarPreparado(
+        "SELECT id_programa, nombre_programa FROM programas WHERE id_eje = ? ORDER BY id_programa ASC",
+        'i', [$id_eje]
+    ));
 }
 
 
@@ -595,30 +633,37 @@ function ProgramasPorEje()
 function IndicadoresPrograma()
 {
     // Devuelve en JSON el árbol de indicadores de un programa: fin, propósito y componentes con sus actividades
-    global $obj;
     $id_programa = (int)($_GET['idr'] ?? 0);
+    $anio        = anioValido($_GET['anio'] ?? null);
 
-    $resultado = ['fin' => null, 'proposito' => null, 'componentes' => []];
+    $indicadores = consultarPreparado(
+        "SELECT * FROM indicadores WHERE id_programa = ? AND activo = 1 ORDER BY orden, id_indicador",
+        'i', [$id_programa]
+    );
 
-    $fin = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = $id_programa AND tipo = 'fin' AND activo = 1 LIMIT 1");
-    if (!empty($fin)) $resultado['fin'] = $fin[0];
-
-    $proposito = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = $id_programa AND tipo = 'proposito' AND activo = 1 LIMIT 1");
-    if (!empty($proposito)) $resultado['proposito'] = $proposito[0];
-
-    $componentes = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_programa = $id_programa AND tipo = 'componente' AND activo = 1 ORDER BY orden, id_indicador");
-    foreach ($componentes as $c) {
-        $c['actividades'] = $obj->mostrardatos("SELECT * FROM indicadores WHERE id_padre = {$c['id_indicador']} AND tipo = 'actividad' AND activo = 1 ORDER BY orden, id_indicador");
-        $resultado['componentes'][] = $c;
+    $resultado   = ['fin' => null, 'proposito' => null, 'componentes' => []];
+    $actividades = [];   // id_padre => [actividades]
+    foreach ($indicadores as $ind) {
+        if ($ind['tipo'] === 'fin' && !$resultado['fin'])             $resultado['fin'] = $ind;
+        if ($ind['tipo'] === 'proposito' && !$resultado['proposito']) $resultado['proposito'] = $ind;
+        if ($ind['tipo'] === 'actividad')                             $actividades[$ind['id_padre']][] = $ind;
+    }
+    foreach ($indicadores as $ind) {
+        if ($ind['tipo'] === 'componente') {
+            $ind['actividades'] = $actividades[$ind['id_indicador']] ?? [];
+            $resultado['componentes'][] = $ind;
+        }
     }
 
     // Calendario del año de todos los indicadores del programa (una sola consulta),
     // para capturar la evaluación mensual directo en la lista.
-    $anio = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)date('Y');
-    $cal  = $obj->mostrardatos("SELECT ic.id_indicador, ic.mes, ic.programado, ic.realizado
-                                FROM indicador_calendario ic
-                                INNER JOIN indicadores i ON i.id_indicador = ic.id_indicador
-                                WHERE i.id_programa = $id_programa AND ic.anio = $anio");
+    $cal = consultarPreparado(
+        "SELECT ic.id_indicador, ic.mes, ic.programado, ic.realizado
+         FROM indicador_calendario ic
+         INNER JOIN indicadores i ON i.id_indicador = ic.id_indicador
+         WHERE i.id_programa = ? AND ic.anio = ?",
+        'ii', [$id_programa, $anio]
+    );
     $resultado['anio']       = $anio;
     $resultado['calendario'] = [];   // id_indicador => mes => {programado, realizado}
     foreach ($cal as $fila) {
@@ -628,52 +673,68 @@ function IndicadoresPrograma()
         ];
     }
 
-    header('Content-Type: application/json');
-    echo json_encode($resultado);
-    exit;
+    responderJson($resultado);
+}
+
+// Año entre 2000 y 2100; si no viene o no es válido, el año actual.
+function anioValido($valor)
+{
+    $anio = (int)$valor;
+    return ($anio >= 2000 && $anio <= 2100) ? $anio : (int)date('Y');
 }
 
 
 function crudIndicadores()
 {
-    global $obj;
     $ops = $_GET['ops'] ?? '';
-    header('Content-Type: application/json');
+    $falla = function ($mensaje) { responderJson(['ok' => false, 'msg' => $mensaje]); };
 
     if ($ops == 'InsertIndicador') {
-        $id_programa   = (int)$_POST['id_programa'];
-        $tipo          = $_POST['tipo'];
+        $id_programa   = (int)($_POST['id_programa'] ?? 0);
+        $tipo          = $_POST['tipo'] ?? '';
         $id_padre      = !empty($_POST['id_padre']) ? (int)$_POST['id_padre'] : null;
-        $descripcion   = trim($_POST['descripcion']);
-        $unidad_medida = trim($_POST['unidad_medida']);
+        $descripcion   = trim($_POST['descripcion'] ?? '');
+        $unidad_medida = trim($_POST['unidad_medida'] ?? '');
 
-        $tipos_validos = ['fin', 'proposito', 'componente', 'actividad'];
-        if (!in_array($tipo, $tipos_validos) || $descripcion === '' || $unidad_medida === '') {
-            echo json_encode(['ok' => false, 'msg' => 'Datos inválidos.']);
-            exit;
+        if (!in_array($tipo, ['fin', 'proposito', 'componente', 'actividad'], true)) $falla('Tipo de indicador no válido.');
+        if ($descripcion === '' || $unidad_medida === '') $falla('Descripción y unidad de medida son obligatorias.');
+        if (mb_strlen($descripcion) > 2000)   $falla('La descripción admite máximo 2000 caracteres.');
+        if (mb_strlen($unidad_medida) > 100)  $falla('La unidad de medida admite máximo 100 caracteres.');
+        if (!consultarPreparado("SELECT id_programa FROM programas WHERE id_programa = ?", 'i', [$id_programa])) {
+            $falla('El programa ya no existe.');
         }
 
         if ($tipo == 'fin' || $tipo == 'proposito') {
-            $existe = $obj->mostrardatos("SELECT id_indicador FROM indicadores WHERE id_programa = $id_programa AND tipo = '$tipo' AND activo = 1");
-            if (!empty($existe)) {
-                echo json_encode(['ok' => false, 'msg' => 'Este programa ya tiene un indicador de ese tipo.']);
-                exit;
-            }
+            $existe = consultarPreparado(
+                "SELECT id_indicador FROM indicadores WHERE id_programa = ? AND tipo = ? AND activo = 1",
+                'is', [$id_programa, $tipo]
+            );
+            if ($existe) $falla('Este programa ya tiene un indicador de ese tipo.');
+            $id_padre = null;
+        }
+        if ($tipo == 'componente') {
+            $id_padre = null;
+        }
+        if ($tipo == 'actividad') {
+            // La actividad debe colgar de un componente del mismo programa.
+            $padre = consultarPreparado(
+                "SELECT id_indicador FROM indicadores WHERE id_indicador = ? AND id_programa = ? AND tipo = 'componente'",
+                'ii', [(int)$id_padre, $id_programa]
+            );
+            if (!$padre) $falla('La actividad debe pertenecer a un componente de este programa.');
         }
 
-        $padreSql = $id_padre ? $id_padre : 'NULL';
-        $sql = "INSERT INTO indicadores (id_programa, tipo, id_padre, descripcion, unidad_medida)
-                VALUES ($id_programa, '$tipo', $padreSql, '$descripcion', '$unidad_medida')";
-        $obj->guardardatos($sql);
-        echo json_encode(['ok' => true]);
-        exit;
+        ejecutarPreparado(
+            "INSERT INTO indicadores (id_programa, tipo, id_padre, descripcion, unidad_medida) VALUES (?, ?, ?, ?, ?)",
+            'isiss', [$id_programa, $tipo, $id_padre, $descripcion, $unidad_medida]
+        );
+        responderJson(['ok' => true]);
     }
 
     if ($ops == 'DeleteIndicador') {
-        $idr = (int)($_GET['idr'] ?? 0);
-        $obj->eliminardatos("DELETE FROM indicadores WHERE id_indicador = $idr");
-        echo json_encode(['ok' => true]);
-        exit;
+        // En cascada: su calendario y, si es componente, sus actividades.
+        ejecutarPreparado("DELETE FROM indicadores WHERE id_indicador = ?", 'i', [(int)($_GET['idr'] ?? 0)]);
+        responderJson(['ok' => true]);
     }
 }
 
@@ -681,11 +742,13 @@ function crudIndicadores()
 function formCalendario()
 {
     // Devuelve en JSON los 12 meses (programado/realizado) de un indicador para un año dado
-    global $obj;
     $id_indicador = (int)($_GET['idr'] ?? 0);
-    $anio = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)date('Y');
+    $anio         = anioValido($_GET['anio'] ?? null);
 
-    $datos = $obj->mostrardatos("SELECT mes, programado, realizado FROM indicador_calendario WHERE id_indicador = $id_indicador AND anio = $anio");
+    $datos = consultarPreparado(
+        "SELECT mes, programado, realizado FROM indicador_calendario WHERE id_indicador = ? AND anio = ?",
+        'ii', [$id_indicador, $anio]
+    );
     $porMes = [];
     foreach ($datos as $d) {
         $porMes[(int)$d['mes']] = ['programado' => $d['programado'], 'realizado' => $d['realizado']];
@@ -700,35 +763,51 @@ function formCalendario()
         ];
     }
 
-    header('Content-Type: application/json');
-    echo json_encode(['id_indicador' => $id_indicador, 'anio' => $anio, 'meses' => $meses]);
-    exit;
+    responderJson(['id_indicador' => $id_indicador, 'anio' => $anio, 'meses' => $meses]);
 }
 
 
 function guardarCalendario()
 {
     global $obj;
-    $id_indicador = (int)$_POST['id_indicador'];
-    $anio         = (int)$_POST['anio'];
+    $id_indicador = (int)($_POST['id_indicador'] ?? 0);
+    $anio         = anioValido($_POST['anio'] ?? null);
 
-    for ($m = 1; $m <= 12; $m++) {
-        $programado = isset($_POST['programado_' . $m]) ? (float)$_POST['programado_' . $m] : 0;
-        $realizado  = isset($_POST['realizado_' . $m])  ? (float)$_POST['realizado_' . $m]  : 0;
-
-        $existe = $obj->mostrardatos("SELECT id_calendario FROM indicador_calendario WHERE id_indicador = $id_indicador AND anio = $anio AND mes = $m");
-        if (!empty($existe)) {
-            $obj->actualizadatos("UPDATE indicador_calendario SET programado = $programado, realizado = $realizado
-                                   WHERE id_indicador = $id_indicador AND anio = $anio AND mes = $m");
-        } else {
-            $obj->guardardatos("INSERT INTO indicador_calendario (id_indicador, anio, mes, programado, realizado)
-                                 VALUES ($id_indicador, $anio, $m, $programado, $realizado)");
-        }
+    if (!consultarPreparado("SELECT id_indicador FROM indicadores WHERE id_indicador = ?", 'i', [$id_indicador])) {
+        responderJson(['ok' => false, 'msg' => 'El indicador ya no existe.']);
     }
 
-    header('Content-Type: application/json');
-    echo json_encode(['ok' => true]);
-    exit;
+    // Se validan los 24 valores antes de guardar nada.
+    $valores = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $programado = $_POST['programado_' . $m] ?? 0;
+        $realizado  = $_POST['realizado_' . $m] ?? 0;
+        if (!is_numeric($programado) || !is_numeric($realizado) || $programado < 0 || $realizado < 0) {
+            responderJson(['ok' => false, 'msg' => 'Los valores deben ser números mayores o iguales a cero.']);
+        }
+        $valores[$m] = [(float)$programado, (float)$realizado];
+    }
+
+    // Los 12 meses se guardan juntos o no se guarda ninguno.
+    // ON DUPLICATE KEY usa el índice único (id_indicador, anio, mes).
+    $conexion = $obj->conexion();
+    mysqli_begin_transaction($conexion);
+    try {
+        foreach ($valores as $m => [$programado, $realizado]) {
+            ejecutarPreparado(
+                "INSERT INTO indicador_calendario (id_indicador, anio, mes, programado, realizado)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE programado = VALUES(programado), realizado = VALUES(realizado)",
+                'iiidd', [$id_indicador, $anio, $m, $programado, $realizado]
+            );
+        }
+        mysqli_commit($conexion);
+    } catch (Throwable $error) {
+        mysqli_rollback($conexion);
+        throw $error;
+    }
+
+    responderJson(['ok' => true]);
 }
 
 
@@ -742,12 +821,9 @@ function guardarCalendario()
  */
 function validarClaveAvance()
 {
-    $clave = $_GET['clave'] ?? '';
-    if ($clave !== CLAVE_AVANCE_PROYECTO) {
+    if (!claveAvanceCorrecta($_GET['clave'] ?? '')) {
         http_response_code(403);
-        header('Content-Type: application/json');
-        echo json_encode(['error' => 'Clave de acceso incorrecta.']);
-        exit;
+        responderJson(['error' => 'Clave de acceso incorrecta.']);
     }
 }
 

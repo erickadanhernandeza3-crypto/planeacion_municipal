@@ -2,6 +2,17 @@
 include("conexion.php");
 $obj = new OperacionesBd;
 
+// Cualquier error no previsto: el detalle va al log del servidor y el usuario
+// recibe un mensaje entendible (js/funciones.js lo muestra en una alerta).
+set_exception_handler(function (Throwable $error) {
+    error_log('controlador.php [' . ($_GET['idopc'] ?? '') . '] ' . $error);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo 'Ocurrió un error al procesar la solicitud. Inténtalo de nuevo; si se repite, avisa al administrador.';
+});
+
 $idopc = $_GET['idopc'] ?? '';
 
 // ── SEGURIDAD: exige sesión activa y el rol correcto antes de cualquier opción ──

@@ -24,6 +24,12 @@ const OPCIONES_PUBLICAS = ['ResumenAvanceProyecto', 'DatosAvanceProgramas'];
 // Tipos de observación por meta (Php/planeacion_extra.php, tabla observaciones_meta).
 const TIPOS_OBSERVACION = ['Observación', 'Acuerdo', 'Problema'];
 
+// Largo mínimo de cualquier contraseña nueva (alta de usuario, edición y cambio propio).
+const MINIMO_CONTRASENA = 8;
+
+// Roles que puede tener un usuario (columna usuarios.rol).
+const ROLES_VALIDOS = ['administrador', 'planeacion'];
+
 
 ////////////////////// SEGURIDAD //////////////////////
 
@@ -57,10 +63,43 @@ function protegerControlador($idopc)
         echo '<div class="alert alert-danger"><i class="bi bi-shield-lock me-1"></i>No tienes permiso para esta opción.</div>';
         exit;
     }
+    // Token CSRF: js/extras_ui.js lo manda en la cabecera X-CSRF-Token de cada petición.
+    // Una página ajena no puede leerlo, así que no puede hacer que el navegador de un
+    // usuario con sesión abierta cree, edite o borre registros sin que se dé cuenta.
+    // PlanReporteEje se abre en otra pestaña (no lleva cabecera) y es de solo lectura.
+    if ($idopc !== 'PlanReporteEje' && !csrfValido()) {
+        rechazar('La página caducó. Recárgala (F5) e inténtalo de nuevo.', 403);
+    }
     // La usa js/extras_ui.js para mantener viva la sesión mientras el usuario trabaja.
     if ($idopc === 'MantenerSesion') {
         responderJson(['ok' => true]);
     }
+}
+
+// Token CSRF de la sesión (se crea la primera vez). Los paneles lo ponen en
+// <meta name="csrf-token"> para que el JavaScript lo mande en cada petición.
+function tokenCsrf()
+{
+    if (empty($_SESSION['csrf'])) {
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf'];
+}
+
+function csrfValido()
+{
+    $enviado = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    return !empty($_SESSION['csrf']) && is_string($enviado) && hash_equals($_SESSION['csrf'], $enviado);
+}
+
+// Corta la petición con un mensaje de texto plano. js/funciones.js lo muestra
+// en una alerta (en vez de pintarlo como si la operación hubiera salido bien).
+function rechazar($mensaje, $codigo = 422)
+{
+    http_response_code($codigo);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo $mensaje;
+    exit;
 }
 
 function mensajeSesion($texto)
@@ -149,14 +188,13 @@ function prepararBitacoraOperacion($idopc)
     }
 }
 
-// Guarda en la bitácora solo si la última consulta de la operación no falló.
+// Guarda en la bitácora la operación ya hecha. Si la operación falló, nunca se
+// llega aquí: los errores de MySQL lanzan excepción y las validaciones usan rechazar().
 // Nunca interrumpe la respuesta de la operación original.
 function guardarBitacoraOperacion($datos)
 {
     if (!$datos) return;
-    global $obj;
     try {
-        if (mysqli_affected_rows($obj->conexion()) < 0) return;
         registrarBitacora($datos['accion'], $datos['descripcion']);
     } catch (Throwable $error) {
         // Si la bitácora falla, la operación ya se hizo; no se muestra error.
@@ -180,6 +218,66 @@ function consultarPreparado($sql, $tipos = '', $parametros = [])
     $filas = mysqli_fetch_all($resultado, MYSQLI_ASSOC);
     mysqli_stmt_close($stmt);
     return $filas;
+}
+
+// Ejecuta un INSERT / UPDATE / DELETE preparado. Devuelve las filas afectadas.
+function ejecutarPreparado($sql, $tipos = '', $parametros = [])
+{
+    global $obj;
+    $stmt = mysqli_prepare($obj->conexion(), $sql);
+    if ($tipos !== '') {
+        mysqli_stmt_bind_param($stmt, $tipos, ...$parametros);
+    }
+    mysqli_stmt_execute($stmt);
+    $afectadas = mysqli_stmt_affected_rows($stmt);
+    mysqli_stmt_close($stmt);
+    return $afectadas;
+}
+
+// true si el error de MySQL es por un valor repetido en un campo único (ej. nombre de usuario).
+function esDuplicado(Throwable $error)
+{
+    return $error instanceof mysqli_sql_exception && $error->getCode() === 1062;
+}
+
+// Texto obligatorio con longitud máxima. Si no cumple, corta con el mensaje.
+function textoRequerido($valor, $campo, $maximo)
+{
+    $texto = trim((string)$valor);
+    if ($texto === '') rechazar("El campo \"$campo\" es obligatorio.");
+    if (mb_strlen($texto) > $maximo) rechazar("El campo \"$campo\" admite máximo $maximo caracteres.");
+    return $texto;
+}
+
+// Texto opcional con longitud máxima. Vacío -> null.
+function textoOpcional($valor, $campo, $maximo)
+{
+    $texto = trim((string)$valor);
+    if ($texto === '') return null;
+    if (mb_strlen($texto) > $maximo) rechazar("El campo \"$campo\" admite máximo $maximo caracteres.");
+    return $texto;
+}
+
+// Fecha AAAA-MM-DD válida o null si viene vacía.
+function fechaValida($valor, $campo, $obligatoria = false)
+{
+    $texto = trim((string)$valor);
+    if ($texto === '') {
+        if ($obligatoria) rechazar("La fecha \"$campo\" es obligatoria.");
+        return null;
+    }
+    $fecha = DateTime::createFromFormat('!Y-m-d', $texto);
+    if (!$fecha || $fecha->format('Y-m-d') !== $texto) rechazar("La fecha \"$campo\" no es válida.");
+    return $texto;
+}
+
+// Número mayor o igual a cero (o null si viene vacío y se permite).
+function numeroNoNegativo($valor, $campo, $permitirVacio = false)
+{
+    $texto = trim((string)$valor);
+    if ($texto === '' && $permitirVacio) return null;
+    if (!is_numeric($texto) || (float)$texto < 0) rechazar("\"$campo\" debe ser un número mayor o igual a cero.");
+    return (float)$texto;
 }
 
 // Guarda un movimiento en la tabla bitacora. Si falla, lanza excepción

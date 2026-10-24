@@ -57,14 +57,16 @@ function cargarAvisoAlertas() {
     .then(r => r.json())
     .then(data => {
       if (data.vencidas === 0 && data.por_vencer === 0) {
-        aviso.innerHTML = `<div class="alert py-2 mb-4" style="background:#d4f4e2;color:#1a6b3c;border:none;font-size:.85rem;">
-          <i class="bi bi-check-circle me-1"></i>No hay metas vencidas ni por vencer en los próximos 15 días.</div>`;
+        aviso.innerHTML = `<div class="aviso-alerta" style="--color:#1a7f4b;">
+          <i class="bi bi-check-circle"></i>
+          <span>No hay metas vencidas ni por vencer en los próximos 15 días.</span>
+        </div>`;
         return;
       }
-      aviso.innerHTML = `<div class="alert py-2 mb-4 d-flex flex-wrap align-items-center gap-2" style="background:#fde8e8;color:#7b1f1f;border:none;border-left:5px solid #c0392b;font-size:.85rem;">
-          <i class="bi bi-alarm fs-5"></i>
+      aviso.innerHTML = `<div class="aviso-alerta" style="--color:#b42318;">
+          <i class="bi bi-alarm"></i>
           <span>Hay <strong>${data.vencidas}</strong> meta(s) vencida(s) y <strong>${data.por_vencer}</strong> por vencer en los próximos 15 días.</span>
-          <a href="javascript:abrirAlertas()" class="ms-auto fw-bold" style="color:#7b1f1f;">Ver alertas <i class="bi bi-arrow-right"></i></a>
+          <a href="javascript:abrirAlertas()">Ver alertas <i class="bi bi-arrow-right"></i></a>
         </div>`;
     }).catch(() => {});
 }
@@ -266,7 +268,7 @@ async function guardarContrasena(evento) {
   evento.preventDefault();
   const nueva     = document.getElementById('pass_nueva').value.trim();
   const confirmar = document.getElementById('pass_confirmar').value.trim();
-  if (nueva.length < 6)   { Swal.fire({ title: "Mínimo 6 caracteres", icon: "warning" }); return; }
+  if (nueva.length < 8)   { Swal.fire({ title: "La contraseña debe tener mínimo 8 caracteres", icon: "warning" }); return; }
   if (nueva !== confirmar) { Swal.fire({ title: "La confirmación no coincide", icon: "warning" }); return; }
 
   const formData = new FormData(document.getElementById('frmContrasena'));

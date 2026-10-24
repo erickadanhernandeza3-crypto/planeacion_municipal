@@ -108,12 +108,12 @@ function FormularioEjesActualizacion($resultado)
                     <div class="col-12">
                         <label class="form-label fw-semibold">Nombre del Eje <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="nombre_eje" name="nombre_eje"
-                            value="<?php echo $nombre_eje; ?>">
+                            value="<?= e($nombre_eje) ?>">
                     </div>
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
-                            onclick="ValidarEjes('OpsEjes', 1, 'formEjes', 'UpdateEje', <?php echo $idr; ?>, 2);"
+                            onclick="ValidarEjes('OpsEjes', 1, 'formEjes', 'UpdateEje', <?= (int)$idr ?>, 2);"
                             class="btn btn-warning fw-bold">
                             <i class="bi bi-floppy me-1"></i> Actualizar Eje
                         </button>
@@ -149,9 +149,9 @@ function FormularioProgramas()
                             <option value="">Selecciona un eje...</option>
                             <?php
                             $sql       = "SELECT * FROM ejes ORDER BY id_eje ASC";
-                            $resultado = $obj->consultardatos($sql);
-                            while ($fila = mysqli_fetch_array($resultado)) { ?>
-                                <option value="<?php echo $fila['id_eje'] ?>"><?php echo $fila['nombre_eje'] ?></option>
+                            $resultado = $obj->mostrardatos($sql);
+                            foreach ($resultado as $fila) { ?>
+                                <option value="<?= (int)$fila['id_eje'] ?>"><?= e($fila['nombre_eje']) ?></option>
                             <?php } ?>
                         </select>
                     </div>
@@ -217,11 +217,11 @@ function FormularioProgramasActualizacion($resultado)
                             <option value="">Selecciona un eje...</option>
                             <?php
                             $sql       = "SELECT * FROM ejes ORDER BY id_eje ASC";
-                            $resultado2 = $obj->consultardatos($sql);
-                            while ($fila = mysqli_fetch_array($resultado2)) { ?>
-                                <option value="<?php echo $fila['id_eje'] ?>"
+                            $resultado2 = $obj->mostrardatos($sql);
+                            foreach ($resultado2 as $fila) { ?>
+                                <option value="<?= (int)$fila['id_eje'] ?>"
                                     <?php echo ($fila['id_eje'] == $id_eje) ? 'selected' : '' ?>>
-                                    <?php echo $fila['nombre_eje'] ?>
+                                    <?= e($fila['nombre_eje']) ?>
                                 </option>
                             <?php } ?>
                         </select>
@@ -230,24 +230,24 @@ function FormularioProgramasActualizacion($resultado)
                     <div class="col-12">
                         <label class="form-label fw-semibold">Nombre del Programa</label>
                         <input type="text" class="form-control" id="nombre_programa" name="nombre_programa"
-                            value="<?php echo $nombre_programa; ?>">
+                            value="<?= e($nombre_programa) ?>">
                     </div>
 
                     <div class="col-12">
                         <label class="form-label fw-semibold">Área Responsable</label>
                         <input type="text" class="form-control" id="responsable" name="responsable"
-                            value="<?php echo $responsable; ?>">
+                            value="<?= e($responsable) ?>">
                     </div>
 
                     <div class="col-12">
                         <label class="form-label fw-semibold">Descripción</label>
                         <input type="text" class="form-control" id="descripcion" name="descripcion"
-                            value="<?php echo $descripcion; ?>">
+                            value="<?= e($descripcion) ?>">
                     </div>
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
-                            onclick="ValidarProgramas('OpsProgramas', 1, 'formProgramas', 'UpdatePrograma', <?php echo $idr; ?>, 4);"
+                            onclick="ValidarProgramas('OpsProgramas', 1, 'formProgramas', 'UpdatePrograma', <?= (int)$idr ?>, 4);"
                             class="btn btn-warning fw-bold">
                             <i class="bi bi-floppy me-1"></i> Actualizar Programa
                         </button>
@@ -284,9 +284,9 @@ function FormularioMetas()
                             <option value="">Selecciona un eje...</option>
                             <?php
                             $sql       = "SELECT * FROM ejes ORDER BY id_eje ASC";
-                            $resultado = $obj->consultardatos($sql);
-                            while ($fila = mysqli_fetch_array($resultado)) { ?>
-                                <option value="<?php echo $fila['id_eje'] ?>"><?php echo $fila['nombre_eje'] ?></option>
+                            $resultado = $obj->mostrardatos($sql);
+                            foreach ($resultado as $fila) { ?>
+                                <option value="<?= (int)$fila['id_eje'] ?>"><?= e($fila['nombre_eje']) ?></option>
                             <?php } ?>
                         </select>
                     </div>
@@ -399,11 +399,11 @@ function FormularioMetasActualizacion($resultado)
                         <select class="form-select" id="id_programa" name="id_programa">
                             <?php
                             $sql2 = "SELECT p.*, e.nombre_eje FROM programas p INNER JOIN ejes e ON p.id_eje = e.id_eje ORDER BY e.id_eje, p.id_programa";
-                            $r2   = $obj->consultardatos($sql2);
-                            while ($f = mysqli_fetch_array($r2)) { ?>
-                                <option value="<?php echo $f['id_programa'] ?>"
+                            $r2   = $obj->mostrardatos($sql2);
+                            foreach ($r2 as $f) { ?>
+                                <option value="<?= (int)$f['id_programa'] ?>"
                                     <?php echo ($f['id_programa'] == $id_programa) ? 'selected' : '' ?>>
-                                    <?php echo $f['nombre_eje'] . ' — ' . $f['nombre_programa'] ?>
+                                    <?= e($f['nombre_eje'] . ' — ' . $f['nombre_programa']) ?>
                                 </option>
                             <?php } ?>
                         </select>
@@ -412,60 +412,60 @@ function FormularioMetasActualizacion($resultado)
                     <div class="col-12">
                         <label class="form-label fw-semibold">Actividad / Meta</label>
                         <input type="text" class="form-control" id="actividad" name="actividad"
-                            value="<?php echo $actividad; ?>">
+                            value="<?= e($actividad) ?>">
                     </div>
 
                     <div class="col-12 col-md-4">
                         <label class="form-label fw-semibold">Unidad de Medida</label>
                         <input type="text" class="form-control" id="unidad_medida" name="unidad_medida"
-                            value="<?php echo $unidad_medida; ?>">
+                            value="<?= e($unidad_medida) ?>">
                     </div>
 
                     <div class="col-6 col-md-4">
                         <label class="form-label fw-semibold">Meta Programada</label>
                         <input type="number" class="form-control" id="meta_programada" name="meta_programada"
-                            value="<?php echo $meta_programada; ?>">
+                            value="<?= e($meta_programada) ?>">
                     </div>
 
                     <div class="col-6 col-md-4">
                         <label class="form-label fw-semibold">Meta Alcanzada</label>
                         <input type="number" class="form-control" id="meta_alcanzada" name="meta_alcanzada"
-                            value="<?php echo $meta_alcanzada; ?>">
+                            value="<?= e($meta_alcanzada) ?>">
                     </div>
 
                     <div class="col-12 col-md-6">
                         <label class="form-label fw-semibold">Fecha Inicio</label>
                         <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio"
-                            value="<?php echo $fecha_inicio; ?>">
+                            value="<?= e($fecha_inicio) ?>">
                     </div>
 
                     <div class="col-12 col-md-6">
                         <label class="form-label fw-semibold">Fecha Límite</label>
                         <input type="date" class="form-control" id="fecha_limite" name="fecha_limite"
-                            value="<?php echo $fecha_limite; ?>">
+                            value="<?= e($fecha_limite) ?>">
                     </div>
 
                     <div class="col-12 col-md-6">
                         <label class="form-label fw-semibold">Presupuesto Asignado ($)</label>
                         <input type="number" class="form-control" id="presupuesto_asignado" name="presupuesto_asignado"
-                            value="<?php echo $presupuesto_asignado; ?>" step="0.01">
+                            value="<?= e($presupuesto_asignado) ?>" step="0.01">
                     </div>
 
                     <div class="col-12 col-md-6">
                         <label class="form-label fw-semibold">Presupuesto Ejercido ($)</label>
                         <input type="number" class="form-control" id="presupuesto_ejercido" name="presupuesto_ejercido"
-                            value="<?php echo $presupuesto_ejercido; ?>" step="0.01">
+                            value="<?= e($presupuesto_ejercido) ?>" step="0.01">
                     </div>
 
                     <div class="col-12">
                         <label class="form-label fw-semibold">Observaciones</label>
                         <textarea class="form-control" id="observaciones" name="observaciones"
-                            rows="3"><?php echo $observaciones; ?></textarea>
+                            rows="3"><?= e($observaciones) ?></textarea>
                     </div>
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
-                            onclick="ValidarMetas('OpsMetas', 1, 'formMetas', 'UpdateMeta', <?php echo $idr; ?>, 6);"
+                            onclick="ValidarMetas('OpsMetas', 1, 'formMetas', 'UpdateMeta', <?= (int)$idr ?>, 6);"
                             class="btn btn-warning fw-bold">
                             <i class="bi bi-floppy me-1"></i> Actualizar Meta
                         </button>
@@ -509,7 +509,7 @@ function FormularioUsuarios()
                     <div class="col-12">
                         <label class="form-label fw-semibold">Contraseña <span class="text-danger">*</span></label>
                         <input type="password" class="form-control" id="contrasena" name="contrasena"
-                            placeholder="Mínimo 6 caracteres">
+                            placeholder="Mínimo 8 caracteres">
                     </div>
 
                     <div class="col-12">
@@ -559,13 +559,13 @@ function FormularioUsuariosActualizacion($resultado)
                     <div class="col-12">
                         <label class="form-label fw-semibold">Nombre completo</label>
                         <input type="text" class="form-control" id="nombre" name="nombre"
-                            value="<?php echo $nombre; ?>">
+                            value="<?= e($nombre) ?>">
                     </div>
 
                     <div class="col-12">
                         <label class="form-label fw-semibold">Usuario</label>
                         <input type="text" class="form-control" id="usuario" name="usuario"
-                            value="<?php echo $usuario; ?>">
+                            value="<?= e($usuario) ?>">
                     </div>
 
                     <div class="col-12">
@@ -592,7 +592,7 @@ function FormularioUsuariosActualizacion($resultado)
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
-                            onclick="ValidarUsuarios('OpsUsuarios', 1, 'formUsuarios', 'UpdateUsuario', <?php echo $idr; ?>, 8);"
+                            onclick="ValidarUsuarios('OpsUsuarios', 1, 'formUsuarios', 'UpdateUsuario', <?= (int)$idr ?>, 8);"
                             class="btn btn-warning fw-bold">
                             <i class="bi bi-floppy me-1"></i> Actualizar Usuario
                         </button>
@@ -790,10 +790,10 @@ function PanelIndicadores()
                     $sql       = "SELECT p.id_programa, p.nombre_programa, e.nombre_eje
                                   FROM programas p INNER JOIN ejes e ON p.id_eje = e.id_eje
                                   ORDER BY e.id_eje, p.id_programa";
-                    $resultado = $obj->consultardatos($sql);
-                    while ($fila = mysqli_fetch_array($resultado)) { ?>
-                        <option value="<?php echo $fila['id_programa'] ?>">
-                            <?php echo $fila['nombre_eje'] . ' — ' . $fila['nombre_programa'] ?>
+                    $resultado = $obj->mostrardatos($sql);
+                    foreach ($resultado as $fila) { ?>
+                        <option value="<?= (int)$fila['id_programa'] ?>">
+                            <?= e($fila['nombre_eje'] . ' — ' . $fila['nombre_programa']) ?>
                         </option>
                     <?php } ?>
                 </select>

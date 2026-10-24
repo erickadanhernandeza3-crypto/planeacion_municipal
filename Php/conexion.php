@@ -1,10 +1,5 @@
 <?php
 
-// Palabra de acceso para la vista pública de solo lectura "Avance del Proyecto"
-// (avance.php). No es una cuenta de usuario ni reemplaza el login: solo evita
-// que cualquiera que adivine la URL entre sin conocer la clave.
-define('CLAVE_AVANCE_PROYECTO', 'Tamazunchale2026');
-
 class OperacionesBd {
     private $servidor;
     private $bd;
@@ -18,14 +13,11 @@ class OperacionesBd {
     private static $conexionCompartida = null;
 
     public function __construct() {
-        // En producción (Render) estas variables se configuran como variables de entorno.
-        // En local (XAMPP), si no existen, cae en los valores de siempre.
-        // trim() por si al pegar el valor en Render se coló un espacio o salto de línea.
-        $this->servidor = trim(getenv('DB_HOST') ?: 'localhost');
-        $this->bd       = trim(getenv('DB_NAME') ?: 'planeacion_municipal_adan');
-        $this->usuario  = trim(getenv('DB_USER') ?: 'root');
-        $this->password = trim(getenv('DB_PASS') ?: '');
-        $this->puerto   = trim(getenv('DB_PORT') ?: 3306);
+        $this->servidor = configuracion('DB_HOST', 'localhost');
+        $this->bd       = configuracion('DB_NAME', 'planeacion_municipal_adan');
+        $this->usuario  = configuracion('DB_USER', 'root');
+        $this->password = configuracion('DB_PASS', '');
+        $this->puerto   = configuracion('DB_PORT', 3306);
     }
 
     public function conexion() {
@@ -33,18 +25,16 @@ class OperacionesBd {
             return self::$conexionCompartida;
         }
 
-        // Desde PHP 8 mysqli lanza excepción en vez de devolver false, y sin
-        // capturarla la respuesta era un 500 con el cuerpo vacío.
+        // Cualquier error de MySQL lanza excepción (así ya es por defecto desde PHP 8.1;
+        // se deja explícito para que no dependa de la versión del servidor).
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
         try {
             $conexion = mysqli_connect($this->servidor, $this->usuario, $this->password, $this->bd, (int)$this->puerto);
         } catch (mysqli_sql_exception $e) {
-            $conexion = false;
-            $error    = $e->getMessage();
-        }
-
-        if (!$conexion) {
-            http_response_code(500);
-            die("Error en la conexión: " . ($error ?? mysqli_connect_error()));
+            // El detalle técnico va al log del servidor, nunca a la pantalla del usuario.
+            error_log('Error de conexión a MySQL: ' . $e->getMessage());
+            http_response_code(503);
+            die('No se pudo conectar con la base de datos. Intenta de nuevo en unos minutos.');
         }
 
         mysqli_set_charset($conexion, 'utf8mb4');
@@ -52,50 +42,17 @@ class OperacionesBd {
         return $conexion;
     }
 
-    public function guardardatos($sql) {
-        $conexion = $this->conexion();
-        mysqli_query($conexion, $sql);
-    }
-
+    // Solo para consultas fijas, sin datos escritos por el usuario.
+    // Para todo lo que lleve datos del usuario se usan consultarPreparado() y
+    // ejecutarPreparado() de comunes_extra.php.
     public function mostrardatos($sql) {
-        $conexion  = $this->conexion();
-        $resultado = mysqli_query($conexion, $sql);
-        // Si la consulta falla, mysqli_query devuelve false y mysqli_fetch_all
-        // lanzaría un TypeError que tumba toda la petición.
-        if (!$resultado) {
-            return [];
-        }
-        return mysqli_fetch_all($resultado, MYSQLI_ASSOC);
+        $resultado = mysqli_query($this->conexion(), $sql);
+        return $resultado ? mysqli_fetch_all($resultado, MYSQLI_ASSOC) : [];
     }
 
     public function mostrarunregistro($sql) {
-        $conexion  = $this->conexion();
-        $resultado = mysqli_query($conexion, $sql);
-        if (!$resultado) {
-            return null;
-        }
-        return mysqli_fetch_assoc($resultado);
-    }
-
-    public function eliminardatos($sql) {
-        $conexion = $this->conexion();
-        mysqli_query($conexion, $sql);
-    }
-
-    public function actualizadatos($sql) {
-        $conexion = $this->conexion();
-        mysqli_query($conexion, $sql);
-    }
-
-    public function consultardatos($sql) {
-        $conexion  = $this->conexion();
-        $resultado = mysqli_query($conexion, $sql);
-        if ($resultado) {
-            return $resultado;
-        } else {
-            echo "Error: " . $sql . "<br>" . mysqli_error($conexion);
-            return false;
-        }
+        $resultado = mysqli_query($this->conexion(), $sql);
+        return $resultado ? mysqli_fetch_assoc($resultado) : null;
     }
 
     public function vistas() {
@@ -105,4 +62,36 @@ class OperacionesBd {
     public function operaciones_bd() {
         include('operaciones.php');
     }
+}
+
+
+/*
+ * Lee un valor de configuración:
+ *   1. Variable de entorno (producción en Render, se configura en el Dashboard).
+ *   2. Php/config.local.php (solo en la computadora local; no se sube a git ni a Render).
+ *   3. El valor por defecto.
+ * trim() por si al pegar el valor en Render se coló un espacio o salto de línea.
+ */
+function configuracion($clave, $defecto = '')
+{
+    static $local = null;
+    if ($local === null) {
+        $archivo = __DIR__ . '/config.local.php';
+        $local   = is_file($archivo) ? (include $archivo) : [];
+    }
+    $valor = getenv($clave);
+    if ($valor === false || $valor === '') {
+        $valor = $local[$clave] ?? $defecto;
+    }
+    return trim((string)$valor);
+}
+
+// Palabra de acceso para la vista pública de solo lectura "Avance del Proyecto"
+// (avance.php). Se configura en la variable de entorno CLAVE_AVANCE o en
+// config.local.php. Si no está configurada, la vista pública queda cerrada.
+define('CLAVE_AVANCE_PROYECTO', configuracion('CLAVE_AVANCE', ''));
+
+function claveAvanceCorrecta($clave)
+{
+    return CLAVE_AVANCE_PROYECTO !== '' && is_string($clave) && hash_equals(CLAVE_AVANCE_PROYECTO, $clave);
 }

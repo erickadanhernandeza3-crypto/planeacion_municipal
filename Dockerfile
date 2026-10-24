@@ -1,7 +1,7 @@
 FROM php:8.2-apache
 
 RUN docker-php-ext-install mysqli \
-    && a2enmod rewrite
+    && a2enmod rewrite headers
 
 # La imagen base no incluye php.ini; sin él PHP muestra los warnings dentro
 # de las respuestas y rompe el JSON de las peticiones AJAX.

@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Configuración local de la base de datos (Laragon/XAMPP), nunca se sube
+Php/config.local.php

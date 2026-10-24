@@ -123,3 +123,43 @@ table.dataTable tbody tr:hover {
 /* La columna de contenido puede encogerse: así las tablas anchas se acomodan
    (DataTables responsive) en lugar de empujar la página fuera de la pantalla. */
 .container-fluid > .row.flex-nowrap > .col { min-width: 0; }
+
+
+/* ══════════ MENÚ LATERAL: opción seleccionada ══════════ */
+#menu .nav-link { padding-left: .5rem !important; border-radius: 6px; }
+#menu .nav-link.activo { background: rgba(255, 255, 255, .12) !important; }
+
+
+/* ══════════ PANEL DE INICIO ══════════ */
+.dash-encabezado { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e3e7ee; }
+.dash-titulo { font-weight: 700; color: #0A2647; margin: 0; }
+.dash-sub { color: #6b7280; margin: .25rem 0 0; font-size: .9rem; }
+
+.kpi {
+  height: 100%; background: #fff; border: 1px solid #e3e7ee; border-radius: 8px;
+  border-left: 4px solid var(--color); padding: 1rem 1.25rem;
+}
+.kpi-etiqueta { font-size: .8rem; color: #6b7280; margin-bottom: .25rem; }
+.kpi-numero { font-size: 1.75rem; font-weight: 700; color: var(--color); line-height: 1.2; }
+
+.dash-seccion { font-weight: 700; color: #0A2647; margin-bottom: 1rem; }
+.tabla-resumen { width: 100%; font-size: .9rem; }
+.tabla-resumen th {
+  font-size: .75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;
+  letter-spacing: .03em; padding: 0 .75rem .5rem; border-bottom: 1px solid #e3e7ee;
+}
+.tabla-resumen td { padding: .7rem .75rem; border-bottom: 1px solid #f0f2f5; color: #1f2937; }
+.tabla-resumen tr:last-child td { border-bottom: none; }
+.tabla-resumen .col-barra { width: 40%; }
+.tabla-resumen .barra { height: 8px; background: #eef1f6; border-radius: 4px; overflow: hidden; }
+.tabla-resumen .barra span { display: block; height: 100%; width: 0; }
+@media (max-width: 575.98px) { .tabla-resumen .col-barra { display: none; } }
+
+.aviso-alerta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  background: #fff; border: 1px solid #e3e7ee; border-left: 4px solid var(--color);
+  border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1.5rem; font-size: .88rem; color: #374151;
+}
+.aviso-alerta i { color: var(--color); }
+.aviso-alerta a { margin-left: auto; font-weight: 600; color: var(--color); text-decoration: none; }
+.aviso-alerta a:hover { text-decoration: underline; }

@@ -16,6 +16,7 @@ if (!revisarInactividad()) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="<?= htmlspecialchars(tokenCsrf()) ?>">
   <title>Administrador — Sistema de Planeación Municipal</title>
 
   <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
@@ -26,8 +27,8 @@ if (!revisarInactividad()) {
   <script src="https://cdn.datatables.net/2.3.4/js/dataTables.js"></script>
   <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.6/css/responsive.dataTables.css" />
   <script src="https://cdn.datatables.net/responsive/3.0.6/js/dataTables.responsive.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.0/dist/sweetalert2.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
   <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Bitácora) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />

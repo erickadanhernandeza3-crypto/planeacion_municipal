@@ -2,7 +2,7 @@
 include('Php/conexion.php');
 
 $clave       = $_GET['clave'] ?? '';
-$autorizado  = ($clave === CLAVE_AVANCE_PROYECTO);
+$autorizado  = claveAvanceCorrecta($clave);
 $claveEnviada = isset($_GET['clave']); // hubo un intento, aunque haya fallado
 ?>
 <!DOCTYPE html>
