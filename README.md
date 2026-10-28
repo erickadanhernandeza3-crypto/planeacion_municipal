@@ -54,15 +54,71 @@ Desde "Indicadores (MIR)" se imprime la ficha técnica de cada indicador, con su
    ```
 4. Entra a `http://planeacion_municipal.test` con el usuario `admin` y la contraseña `Cambiar.2026`. **Cámbiala en ese momento** desde Gestión de Usuarios > Editar.
 
-## Producción (Render + Clever Cloud)
+## Producción en Render
 
-El `Dockerfile` arma la imagen con PHP 8.2 y Apache. En el Web Service de Render configura estas variables en **Environment** (ver `.env.example`):
+Todo corre en Render, en la **misma región**: el sistema (Web Service) y su base de datos MySQL (Private Service con disco). Así cada consulta tarda ~1 ms. Con la base en otro proveedor y otro continente tardaba ~150 ms.
+
+| Servicio | Qué es | Plan |
+|---|---|---|
+| Web Service (`Dockerfile` de la raíz) | PHP 8.2 + Apache | Gratis o de pago |
+| Private Service (`docker/mysql/Dockerfile`) | MySQL 8.4 con disco de 1 GB | Starter (~7 USD/mes) + disco (~0.25 USD/mes) |
+
+Variables del **Web Service** (ver `.env.example`):
 
 | Variable | Para qué |
 |---|---|
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Conexión a la base de MySQL (Clever Cloud). |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Conexión a MySQL. `DB_HOST` es la dirección interna del Private Service. |
 | `CLAVE_AVANCE` | Clave de `avance.php`. Si no se define, esa página queda cerrada. |
 | `CLOUDINARY_URL` | Cuenta de Cloudinary para las evidencias: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`. Se copia del Dashboard de Cloudinary ("API environment variable"). Sin ella, el sistema avisa que las evidencias no están configuradas. |
+
+### Base de datos en Render (paso a paso)
+
+1. **Ver la región del sistema.** En Render abre el Web Service y anota su **Region** (por ejemplo, *Oregon*). La base debe ir en la misma.
+2. **Crear la base.** *New > Private Service* > conecta este repositorio de GitHub y llena:
+
+   | Campo | Valor |
+   |---|---|
+   | Name | `planeacion-mysql` |
+   | Region | **la misma del paso 1** |
+   | Runtime / Language | Docker |
+   | Dockerfile Path | `./docker/mysql/Dockerfile` |
+   | Docker Build Context Directory | `./docker/mysql` |
+   | Instance Type | Starter |
+   | Disk | Mount Path `/var/lib/mysql`, tamaño 1 GB |
+
+3. **Variables del Private Service**, antes de crearlo:
+
+   | Variable | Valor |
+   |---|---|
+   | `MYSQL_DATABASE` | `planeacion_municipal` |
+   | `MYSQL_USER` | `planeacion` |
+   | `MYSQL_PASSWORD` | una contraseña larga (la usará el sistema) |
+   | `MYSQL_ROOT_PASSWORD` | otra contraseña larga, distinta |
+   | `ORIGEN_HOST`, `ORIGEN_PORT`, `ORIGEN_DB`, `ORIGEN_USER`, `ORIGEN_PASS` | los datos de la base actual de Clever Cloud, que son los mismos que hoy tiene el Web Service en `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASS` |
+
+   La primera vez que arranca, la base **copia sola todos los datos** de Clever Cloud. En *Logs* debe aparecer `[planeacion] Datos copiados: N tablas`. Después ya no vuelve a copiar, aunque se reinicie.
+4. **Conectar el sistema a la base nueva.** En el Web Service cambia las variables y guarda (se reinicia solo):
+   - `DB_HOST` = la **Internal Address** del Private Service, sin el `:3306` (por ejemplo, `planeacion-mysql-abcd`)
+   - `DB_PORT` = `3306`
+   - `DB_NAME` = `planeacion_municipal`
+   - `DB_USER` = `planeacion`
+   - `DB_PASS` = la `MYSQL_PASSWORD` del paso 3
+5. **Comprobar.** Abre `https://<tu-sistema>.onrender.com/salud.php`. Debe responder `"ok":true` con `consulta_ms` de 0 a 2. Entra al sistema y revisa que estén tus datos.
+6. Cuando todo esté bien por unos días, puedes quitar las variables `ORIGEN_*` y dar de baja la base de Clever Cloud.
+
+**Volver a copiar los datos** (si la copia inicial falló): en el Private Service abre *Shell* y ejecuta, con los datos de Clever Cloud:
+
+```bash
+MYSQL_PWD='CLAVE_CLEVER' mysqldump -h HOST_CLEVER -P PUERTO -u USUARIO_CLEVER --single-transaction --no-tablespaces --set-gtid-purged=OFF BD_CLEVER > /tmp/origen.sql
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot planeacion_municipal < /tmp/origen.sql
+```
+
+La configuración de MySQL (`docker/mysql/planeacion.cnf`) está pensada para los 512 MB del plan Starter (usa ~135 MB):
+- usa la hora del centro de México;
+- no guarda registro binario, para que el disco no se llene solo;
+- guarda los datos en una subcarpeta del disco, porque la raíz trae `lost+found` y MySQL no arranca ahí.
+
+### Lo que el sistema hace solo
 
 **Base de datos sin acceso directo.** Al arrancar, el sistema crea solo las tablas y columnas nuevas (`Php/migraciones.php`, tabla `esquema_version`). Después de cada despliegue, la primera petición aplica lo que falte. No hay que correr scripts a mano.
 
@@ -72,23 +128,24 @@ El `Dockerfile` arma la imagen con PHP 8.2 y Apache. En el Web Service de Render
 - La subida se firma en el servidor; las claves nunca llegan al navegador.
 - Al borrar una meta, un programa o un eje, también se borran sus archivos en Cloudinary.
 
+**Siempre despierto en horario de oficina.** El plan gratis del Web Service se duerme a los 15 minutos sin visitas. La tarea `.github/workflows/mantener-activo.yml` visita `salud.php` cada 10 minutos de 7:00 a 21:00 (hora de México).
+
 En producción la imagen ya trae:
 - Los errores de PHP se guardan en el log y nunca se muestran en pantalla.
 - La cookie de sesión es solo HTTPS, `HttpOnly` y `SameSite`.
 - Cabeceras de seguridad activas: anti-iframe, `nosniff` y HSTS.
 - Las carpetas `sql/` y `docker/` no se pueden abrir desde el navegador.
-
-> El plan gratuito de Render "se duerme" sin uso y la primera carga tarda cerca de un minuto. Para uso diario conviene un plan de pago.
+- Caché del navegador para CSS y JS, y descarga diferida de las librerías de Excel/PDF.
 
 ## Respaldos
 
-**Hazlo antes de salir a producción.** Revisa en Clever Cloud que el add-on de MySQL tenga respaldos automáticos activos. Además, saca un respaldo manual cada semana y antes de cualquier cambio grande:
+**Hazlo antes de salir a producción.** Saca un respaldo cada semana y antes de cualquier cambio grande. En el Private Service abre *Shell*:
 
 ```bash
-mysqldump -h HOST -P PUERTO -u USUARIO -p --single-transaction --routines NOMBRE_BD > respaldo_AAAA-MM-DD.sql
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction planeacion_municipal > /tmp/respaldo.sql
 ```
 
-Para restaurar: `mysql -h HOST -P PUERTO -u USUARIO -p NOMBRE_BD < respaldo_AAAA-MM-DD.sql`.
+Para pasarlo a tu computadora, Render permite conectarse por SSH a los servicios de pago (botón *Connect > SSH* del Private Service); con eso puedes copiar el archivo con `scp`.
 
 Guarda los respaldos fuera del servidor (por ejemplo, en una unidad compartida del Ayuntamiento).
 
@@ -116,6 +173,8 @@ Php/controlador.php  Entrada única de todas las peticiones (idopc=...)
 Php/comunes_extra.php  Seguridad, roles, validaciones y funciones compartidas
 Php/migraciones.php  Actualiza la base de datos sola al desplegar
 Php/evidencias.php   Subida y borrado de evidencias en Cloudinary
+docker/mysql/        Base de datos MySQL para Render (Private Service)
+salud.php            Verificación de salud (la usa la tarea de GitHub)
 Php/operaciones.php  CRUD de ejes, programas, metas, usuarios e indicadores
 Php/vistas.php       Formularios y tablas
 Php/planeacion_extra.php / admin_extra.php  Módulos de cada panel

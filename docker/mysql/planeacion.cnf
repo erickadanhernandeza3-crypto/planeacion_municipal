@@ -1,0 +1,29 @@
+# Configuración de MySQL para el plan Starter de Render (512 MB de RAM).
+[mysqld]
+# El disco de Render trae la carpeta "lost+found" y MySQL se niega a iniciar en una
+# carpeta que no está vacía; por eso los datos van en una subcarpeta del disco.
+datadir = /var/lib/mysql/datos
+
+# Memoria: valores chicos, la base del sistema es pequeña.
+performance_schema      = OFF
+innodb_buffer_pool_size = 96M
+innodb_log_buffer_size  = 8M
+key_buffer_size         = 8M
+table_open_cache        = 256
+thread_cache_size       = 8
+tmp_table_size          = 16M
+max_heap_table_size     = 16M
+max_connections         = 60
+
+# Sin registro binario: no hay réplicas y así el disco no se llena solo.
+disable_log_bin
+
+# Texto con acentos y ñ; misma intercalación que el resto del sistema.
+character_set_server = utf8mb4
+collation_server     = utf8mb4_unicode_ci
+
+# Hora del centro de México (sin horario de verano desde 2022), para que
+# CURDATE() de las alertas y el semáforo coincida con la fecha del municipio.
+default_time_zone = '-06:00'
+
+skip_name_resolve

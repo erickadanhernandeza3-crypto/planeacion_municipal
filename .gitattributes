@@ -1,0 +1,6 @@
+# Archivos que corren en Linux (Render): siempre con fin de línea LF.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.cnf       text eol=lf
+*.conf      text eol=lf
+*.yml       text eol=lf
