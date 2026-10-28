@@ -39,6 +39,11 @@ class OperacionesBd {
 
         mysqli_set_charset($conexion, 'utf8mb4');
         self::$conexionCompartida = $conexion;
+
+        // Crea las tablas o columnas nuevas si la base todavía no las tiene (Php/migraciones.php).
+        require_once __DIR__ . '/migraciones.php';
+        aplicarMigraciones($conexion);
+
         return $conexion;
     }
 

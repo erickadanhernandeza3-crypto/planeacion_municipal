@@ -155,8 +155,8 @@ const columnasSeguimiento = [
       return `<div class="d-flex justify-content-center gap-2">
         <a href="#" onclick="abrirFormAvance(${idr});return false;" class="fs-5" title="Registrar avance"><i class="bi bi-plus-circle-fill" style="color:#2fa86a;"></i></a>
         <a href="#" onclick="abrirHistorial(${idr});return false;" class="fs-5" title="Historial de avances"><i class="bi bi-clock-history" style="color:#0A2647;"></i></a>
-        <a href="#" onclick="abrirFicha(${idr});return false;" class="fs-5" title="Ficha de la meta"><i class="bi bi-eye-fill" style="color:#c89b00;"></i></a>
-        <a href="#" onclick="abrirObservaciones(${idr});return false;" class="fs-5" title="Observaciones y acuerdos"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a>
+        <a href="#" onclick="abrirFicha(${idr});return false;" class="fs-5" title="Ficha de la meta y evidencias"><i class="bi bi-eye-fill" style="color:#c89b00;"></i></a>
+        ${esEnlace() ? '' : `<a href="#" onclick="abrirObservaciones(${idr});return false;" class="fs-5" title="Observaciones y acuerdos"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a>`}
       </div>`;
     }
   }
@@ -226,18 +226,32 @@ async function guardarAvance(evento) {
   if (!fecha)               { Swal.fire({ title: "Selecciona la fecha del avance", icon: "warning" }); return; }
   if (fecha > hoy)          { Swal.fire({ title: "La fecha no puede ser futura", icon: "warning" }); return; }
 
-  const formData = new FormData(document.getElementById('frmAvance'));
-  const response = await fetch('Php/controlador.php?idopc=PlanGuardarAvance', { method: 'POST', body: formData });
-  const data     = await response.json();
+  const archivos = Array.from(document.getElementById('evidencias_avance').files);
+  if (archivos.length > 10) { Swal.fire({ title: "Máximo 10 evidencias por avance", icon: "warning" }); return; }
+  const idMeta = document.querySelector('#frmAvance [name="id_meta"]').value;
+  const boton  = document.getElementById('btnGuardarAvance');
+  boton.disabled = true;
 
-  if (data.ok) {
+  try {
+    const data = await pedirJson('Php/controlador.php?idopc=PlanGuardarAvance', { method: 'POST', body: new FormData(document.getElementById('frmAvance')) });
+    if (!data.ok) { Swal.fire({ title: "No se pudo guardar", text: data.mensaje, icon: "error" }); return; }
+
+    // El avance ya quedó guardado; ahora se suben sus evidencias.
+    let aviso = '';
+    if (archivos.length) {
+      const fallas = await subirEvidencias(idMeta, data.id_avance, archivos);
+      if (fallas.length) aviso = '\n\nNo se subieron ' + fallas.length + ' evidencia(s): ' + fallas.join(' · ') + '\nPuedes agregarlas desde la ficha de la meta.';
+    }
     cerrarModalPlan();
-    Swal.fire({ title: "Avance registrado", text: data.mensaje, icon: "success" });
+    Swal.fire({ title: data.en_revision ? "Avance enviado a revisión" : "Avance registrado", text: data.mensaje + aviso, icon: aviso ? "warning" : "success" });
     // Refresca lo que esté abierto en pantalla
     if (document.getElementById('TBSeguimiento')) cargarTablaSeguimiento();
     else if (document.getElementById('tituloAlertas')) abrirAlertas();
-  } else {
-    Swal.fire({ title: "No se pudo guardar", text: data.mensaje, icon: "error" });
+    actualizarAvisosRevision();
+  } catch (error) {
+    Swal.fire({ title: "No se pudo guardar", text: error.message, icon: "error" });
+  } finally {
+    boton.disabled = false;
   }
 }
 
@@ -594,4 +608,193 @@ function eliminarObservacion(id) {
       .then(res => res.json())
       .then(() => recargarModalPlan());
   });
+}
+
+
+/////////////////////// Utilidades de los módulos nuevos ///////////////////////
+function esEnlace() {
+  return typeof ROL_USUARIO !== 'undefined' && ROL_USUARIO === 'enlace';
+}
+
+// fetch que devuelve el JSON, o lanza un Error con el mensaje del servidor
+// (validaciones y permisos llegan como texto plano; la sesión vencida como HTML).
+async function pedirJson(url, opciones) {
+  let respuesta;
+  try {
+    respuesta = await fetch(url, opciones);
+  } catch (e) {
+    throw new Error('No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.');
+  }
+  const tipo = respuesta.headers.get('Content-Type') || '';
+  if (tipo.indexOf('application/json') !== -1) return respuesta.json();
+  const texto = await respuesta.text();
+  if (respuesta.status === 401) throw new Error('Tu sesión se cerró. Vuelve a iniciar sesión.');
+  throw new Error(tipo.indexOf('text/plain') !== -1 ? texto : 'Ocurrió un error. Recarga la página e inténtalo de nuevo.');
+}
+
+
+/////////////////////// Evidencias (fotos y PDF en Cloudinary) ///////////////////////
+const EVIDENCIA_MAX_MB = 5;
+
+// Reduce una foto a máximo 1600 px y la convierte a JPG (~300 KB en lugar de 4-8 MB).
+// Así se sube rápido aunque sea desde el celular con datos. Los PDF no se tocan.
+function comprimirImagen(archivo) {
+  if (!/^image\/(jpeg|png|webp)$/.test(archivo.type)) return Promise.resolve(archivo);
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(archivo);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const escala = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width * escala);
+      canvas.height = Math.round(img.height * escala);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';                       // fondo blanco para PNG con transparencia
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        if (!blob || blob.size >= archivo.size) { resolve(archivo); return; }
+        resolve(new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.8);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(archivo); };
+    img.src = url;
+  });
+}
+
+// Sube los archivos uno por uno. Devuelve la lista de los que fallaron (con el motivo).
+async function subirEvidencias(idMeta, idAvance, archivos) {
+  const fallas = [];
+  for (let i = 0; i < archivos.length; i++) {
+    Swal.fire({ title: 'Subiendo evidencias…', text: (i + 1) + ' de ' + archivos.length, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    const archivo = await comprimirImagen(archivos[i]);
+    if (archivo.size > EVIDENCIA_MAX_MB * 1024 * 1024) { fallas.push(archivos[i].name + ' (pesa más de 5 MB)'); continue; }
+    const datos = new FormData();
+    datos.append('id_meta', idMeta);
+    if (idAvance) datos.append('id_avance', idAvance);
+    datos.append('archivo', archivo, archivo.name);
+    try {
+      const r = await pedirJson('Php/controlador.php?idopc=PlanSubirEvidencia', { method: 'POST', body: datos });
+      if (!r.ok) fallas.push(archivos[i].name + ' (' + r.mensaje + ')');
+    } catch (error) {
+      fallas.push(archivos[i].name + ' (' + error.message + ')');
+    }
+  }
+  Swal.close();
+  return fallas;
+}
+
+// Botón "Agregar fotos o PDF" de la ficha de la meta.
+async function subirEvidenciasMeta(idMeta, input) {
+  const archivos = Array.from(input.files);
+  input.value = '';
+  if (!archivos.length) return;
+  const fallas = await subirEvidencias(idMeta, null, archivos);
+  await recargarEvidenciasMeta(idMeta);
+  if (fallas.length) Swal.fire({ title: 'Algunas evidencias no se subieron', text: fallas.join('\n'), icon: 'warning' });
+  else Swal.fire({ title: 'Evidencias guardadas', icon: 'success', timer: 1400, showConfirmButton: false });
+}
+
+async function recargarEvidenciasMeta(idMeta) {
+  const caja = document.getElementById('evidenciasMeta');
+  if (!caja) return;
+  const r = await fetch('Php/controlador.php?idopc=PlanEvidenciasMeta&idr=' + idMeta);
+  if (r.ok) caja.innerHTML = await r.text();
+}
+
+function borrarEvidencia(idEvidencia, idMeta) {
+  Swal.fire({
+    title: '¿Quitar esta evidencia?', text: 'El archivo se borra del almacenamiento.', icon: 'warning',
+    showCancelButton: true, confirmButtonText: 'Sí, quitar', cancelButtonText: 'Cancelar', confirmButtonColor: '#c0392b'
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    const datos = new FormData();
+    datos.append('id_evidencia', idEvidencia);
+    try {
+      const r = await pedirJson('Php/controlador.php?idopc=PlanBorrarEvidencia', { method: 'POST', body: datos });
+      if (!r.ok) { Swal.fire({ title: 'No se pudo quitar', text: r.mensaje, icon: 'error' }); return; }
+      if (document.getElementById('evidenciasMeta')) recargarModalPlan();       // ficha abierta
+      else if (document.getElementById('tituloRevision')) abrirRevision();        // revisión
+    } catch (error) {
+      Swal.fire({ title: 'No se pudo quitar', text: error.message, icon: 'error' });
+    }
+  });
+}
+
+
+/////////////////////// Revisión de avances (Planeación) ///////////////////////
+function abrirRevision() {
+  abrirModuloPlan('PlanRevision');
+}
+
+async function aprobarAvance(idAvance) {
+  const res = await Swal.fire({
+    title: '¿Aprobar este avance?', text: 'Se sumará a la meta y el enlace lo verá como aprobado.', icon: 'question',
+    showCancelButton: true, confirmButtonText: 'Sí, aprobar', cancelButtonText: 'Cancelar', confirmButtonColor: '#1a7f4b'
+  });
+  if (!res.isConfirmed) return;
+  enviarRevision('PlanAprobarAvance', idAvance, null);
+}
+
+async function devolverAvance(idAvance) {
+  const res = await Swal.fire({
+    title: 'Devolver avance', input: 'textarea', inputLabel: '¿Qué debe corregir el enlace?',
+    inputPlaceholder: 'Ej. La foto no corresponde a la comunidad indicada; adjunta la lista de asistencia.',
+    inputAttributes: { maxlength: 500 }, showCancelButton: true, confirmButtonText: 'Devolver', cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#c0392b',
+    inputValidator: v => (!v || v.trim().length < 5) ? 'Escribe el motivo (mínimo 5 caracteres).' : undefined
+  });
+  if (!res.isConfirmed) return;
+  enviarRevision('PlanDevolverAvance', idAvance, res.value.trim());
+}
+
+async function enviarRevision(idopc, idAvance, comentario) {
+  const datos = new FormData();
+  datos.append('id_avance', idAvance);
+  if (comentario) datos.append('comentario', comentario);
+  try {
+    const r = await pedirJson('Php/controlador.php?idopc=' + idopc, { method: 'POST', body: datos });
+    Swal.fire({ title: r.ok ? 'Listo' : 'No se pudo', text: r.mensaje, icon: r.ok ? 'success' : 'warning', timer: r.ok ? 1800 : undefined, showConfirmButton: !r.ok });
+    abrirRevision();
+    actualizarAvisosRevision();
+  } catch (error) {
+    Swal.fire({ title: 'No se pudo', text: error.message, icon: 'error' });
+  }
+}
+
+// Números en el menú: avances por revisar (Planeación) o devueltos (enlace).
+function actualizarAvisosRevision() {
+  const badgePlan = document.getElementById('badgeRevision');
+  const badgeEnl  = document.getElementById('badgeDevueltos');
+  const aviso     = document.getElementById('avisoAvances');
+  if (!badgePlan && !badgeEnl && !aviso) return;
+  pedirJson('Php/controlador.php?idopc=PlanContarPendientes').then(d => {
+    const poner = (badge, n) => { if (badge) { badge.textContent = n; badge.hidden = !n; } };
+    poner(badgePlan, d.pendientes || 0);
+    poner(badgeEnl, d.devueltos || 0);
+    if (!aviso) return;
+    let html = '';
+    if (d.pendientes) html += `<div class="aviso-alerta" style="--color:#b7791f;"><i class="bi bi-clipboard-check"></i><span>Hay <strong>${d.pendientes}</strong> avance(s) de los enlaces esperando tu revisión.</span><a href="javascript:abrirRevision()">Revisar <i class="bi bi-arrow-right"></i></a></div>`;
+    if (d.devueltos)  html += `<div class="aviso-alerta" style="--color:#b42318;"><i class="bi bi-arrow-return-left"></i><span>Planeación te devolvió <strong>${d.devueltos}</strong> avance(s). Revisa el motivo y registra el avance corregido.</span><a href="javascript:abrirMisAvances()">Ver <i class="bi bi-arrow-right"></i></a></div>`;
+    if (d.en_revision) html += `<div class="aviso-alerta" style="--color:#0A2647;"><i class="bi bi-hourglass-split"></i><span>Tienes <strong>${d.en_revision}</strong> avance(s) esperando la revisión de Planeación.</span></div>`;
+    aviso.innerHTML = html;
+  }).catch(() => {});
+}
+
+
+/////////////////////// Panel del enlace ///////////////////////
+function abrirMisAvances() {
+  abrirModuloPlan('PlanMisAvances');
+}
+
+function cargarInicioEnlace() {
+  pedirJson('Php/controlador.php?idopc=PlanResumenEnlace').then(d => {
+    document.getElementById('nombreDependencia').textContent = d.dependencia || 'Sin dependencia asignada (avisa al administrador)';
+    document.getElementById('kpiTotal').textContent      = d.total;
+    document.getElementById('kpiCumplidas').textContent  = d.terminadas;
+    document.getElementById('kpiEnProceso').textContent  = d.en_proceso;
+    document.getElementById('kpiPendientes').textContent = d.pendientes;
+  }).catch(() => {});
+  actualizarAvisosRevision();
 }

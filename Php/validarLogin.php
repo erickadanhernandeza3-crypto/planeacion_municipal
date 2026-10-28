@@ -47,11 +47,7 @@ if ($user && password_verify($password, $user['contrasena'])) {
     } catch (Throwable $error) {
     }
 
-    if ($user['rol'] === 'administrador') {
-        header('Location: ../administrador.php');
-    } else {
-        header('Location: ../planeacion.php');
-    }
+    header('Location: ../' . (PANEL_POR_ROL[$user['rol']] ?? 'index.php'));
 } else {
     try {
         registrarBitacora('Login fallido', $descripcionFallo);

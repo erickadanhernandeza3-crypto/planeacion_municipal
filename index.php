@@ -1,7 +1,7 @@
 <?php
 session_start();
 if (isset($_SESSION['rol'])) {
-    header('Location: ' . ($_SESSION['rol'] === 'administrador' ? 'administrador.php' : 'planeacion.php'));
+    header('Location: ' . (['administrador' => 'administrador.php', 'planeacion' => 'planeacion.php', 'enlace' => 'enlace.php'][$_SESSION['rol']] ?? 'Php/cerrar_sesion.php'));
     exit;
 }
 ?>

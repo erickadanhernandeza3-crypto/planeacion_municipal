@@ -84,6 +84,22 @@ switch ($idopc) {
     case 'GuardarCalendario':
         guardarCalendario();
         break;
+
+    case 'FichaIndicador':
+        FichaIndicador();
+        break;
+
+    case 'GuardarFichaIndicador':
+        GuardarFichaIndicador();
+        break;
+
+    case 'FichaTecnicaIndicador':
+        FichaTecnicaIndicador();
+        break;
+
+    case 'MatrizMIR':
+        MatrizMIR();
+        break;
 }
 
 
@@ -125,7 +141,9 @@ function crudEjes()
     if ($ops == "DeleteEje") {
         // La base de datos borra en cascada sus programas, metas, avances,
         // observaciones e indicadores (llaves foráneas ON DELETE CASCADE).
+        $archivos = evidenciasPorBorrar('p.id_eje = ?', 'i', [$idr]);
         ejecutarPreparado("DELETE FROM ejes WHERE id_eje = ?", 'i', [$idr]);
+        borrarArchivosEvidencias($archivos);   // fotos y PDF en Cloudinary
         MostrarEjes();
     }
 }
@@ -179,7 +197,9 @@ function crudProgramas()
 
     if ($ops == "DeletePrograma") {
         // En cascada: metas, avances, observaciones e indicadores del programa.
+        $archivos = evidenciasPorBorrar('p.id_programa = ?', 'i', [$idr]);
         ejecutarPreparado("DELETE FROM programas WHERE id_programa = ?", 'i', [$idr]);
+        borrarArchivosEvidencias($archivos);
         MostrarProgramas();
     }
 }
@@ -253,8 +273,10 @@ function crudMetas()
     }
 
     if ($ops == "DeleteMeta") {
-        // En cascada: sus avances y observaciones.
+        // En cascada: sus avances, observaciones y evidencias.
+        $archivos = evidenciasPorBorrar('m.id_meta = ?', 'i', [$idr]);
         ejecutarPreparado("DELETE FROM metas WHERE id_meta = ?", 'i', [$idr]);
+        borrarArchivosEvidencias($archivos);
         MostrarMetas();
     }
 }
@@ -262,7 +284,8 @@ function crudMetas()
 
 ////////////////////// CRUD USUARIOS //////////////////////
 
-// Valida y devuelve nombre, usuario y rol del formulario de usuarios.
+// Valida y devuelve nombre, usuario, rol y dependencia del formulario de usuarios.
+// La dependencia solo se guarda para los enlaces (para los demás roles queda vacía).
 function datosFormularioUsuario()
 {
     $nombre  = textoRequerido($_POST['nombre'] ?? '', 'Nombre completo', 100);
@@ -272,7 +295,15 @@ function datosFormularioUsuario()
     }
     $rol = $_POST['rol'] ?? '';
     if (!in_array($rol, ROLES_VALIDOS, true)) rechazar('Selecciona un rol válido.');
-    return [$nombre, $usuario, $rol];
+
+    $dependencia = null;
+    if ($rol === 'enlace') {
+        $dependencia = trim($_POST['dependencia'] ?? '');
+        if (!in_array($dependencia, listaDependencias(), true)) {
+            rechazar('Selecciona la dependencia del enlace (debe ser el Área responsable de algún programa).');
+        }
+    }
+    return [$nombre, $usuario, $rol, $dependencia];
 }
 
 function validarContrasenaNueva($password)
@@ -305,13 +336,13 @@ function crudUsuarios()
     $idr = (int)($_GET['idr'] ?? 0);
 
     if ($ops == "Insert") {
-        [$nombre, $usuario, $rol] = datosFormularioUsuario();
+        [$nombre, $usuario, $rol, $dependencia] = datosFormularioUsuario();
         $password = trim((string)($_POST['contrasena'] ?? ''));   // igual que el login, que también recorta espacios
         validarContrasenaNueva($password);
         try {
             ejecutarPreparado(
-                "INSERT INTO usuarios (nombre, usuario, contrasena, rol) VALUES (?, ?, ?, ?)",
-                'ssss', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol]
+                "INSERT INTO usuarios (nombre, usuario, contrasena, rol, dependencia) VALUES (?, ?, ?, ?, ?)",
+                'sssss', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol, $dependencia]
             );
         } catch (mysqli_sql_exception $error) {
             if (esDuplicado($error)) rechazar('Ese nombre de usuario ya está en uso. Elige otro.');
@@ -321,13 +352,13 @@ function crudUsuarios()
     }
 
     if ($ops == "Edit") {
-        $resultado = consultarPreparado("SELECT id_usuario, nombre, usuario, rol, activo FROM usuarios WHERE id_usuario = ?", 'i', [$idr]);
+        $resultado = consultarPreparado("SELECT id_usuario, nombre, usuario, rol, dependencia, activo FROM usuarios WHERE id_usuario = ?", 'i', [$idr]);
         if (!$resultado) rechazar('El usuario ya no existe.', 404);
         FormularioUsuariosActualizacion($resultado);
     }
 
     if ($ops == "UpdateUsuario") {
-        [$nombre, $usuario, $rol] = datosFormularioUsuario();
+        [$nombre, $usuario, $rol, $dependencia] = datosFormularioUsuario();
         $activo   = ((int)($_POST['activo'] ?? 1)) === 1 ? 1 : 0;
         $password = trim((string)($_POST['contrasena'] ?? ''));   // igual que el login, que también recorta espacios
 
@@ -344,13 +375,13 @@ function crudUsuarios()
             if ($password !== '') {
                 validarContrasenaNueva($password);
                 ejecutarPreparado(
-                    "UPDATE usuarios SET nombre = ?, usuario = ?, contrasena = ?, rol = ?, activo = ? WHERE id_usuario = ?",
-                    'ssssii', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol, $activo, $idr]
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, contrasena = ?, rol = ?, dependencia = ?, activo = ? WHERE id_usuario = ?",
+                    'sssssii', [$nombre, $usuario, password_hash($password, PASSWORD_BCRYPT), $rol, $dependencia, $activo, $idr]
                 );
             } else {
                 ejecutarPreparado(
-                    "UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, activo = ? WHERE id_usuario = ?",
-                    'sssii', [$nombre, $usuario, $rol, $activo, $idr]
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, dependencia = ?, activo = ? WHERE id_usuario = ?",
+                    'ssssii', [$nombre, $usuario, $rol, $dependencia, $activo, $idr]
                 );
             }
         } catch (mysqli_sql_exception $error) {
@@ -461,6 +492,7 @@ function InfoUsuarios()
             'nombre'     => $columna['nombre'],
             'usuario'    => $columna['usuario'],
             'rol'        => $columna['rol'],
+            'dependencia' => $columna['dependencia'] ?? '',
             'activo'     => ($columna['activo'] == 1) ? 'Activo' : 'Inactivo',
         ];
     }
@@ -905,4 +937,316 @@ function DatosAvanceProgramas()
     header('Content-Type: application/json');
     echo json_encode(['data' => $lista]);
     exit;
+}
+
+
+////////////////////// FICHA TÉCNICA DE INDICADORES MIR //////////////////////
+// Campos de la Metodología de Marco Lógico que pide el Presupuesto basado en
+// Resultados (PbR). Las columnas las crea Php/migraciones.php (migración 3).
+
+function indicadorConPrograma($id_indicador)
+{
+    $filas = consultarPreparado(
+        "SELECT i.*, p.nombre_programa, p.responsable, e.nombre_eje
+         FROM indicadores i
+         INNER JOIN programas p ON i.id_programa = p.id_programa
+         INNER JOIN ejes e      ON p.id_eje = e.id_eje
+         WHERE i.id_indicador = ?",
+        'i', [(int)$id_indicador]
+    );
+    return $filas[0] ?? null;
+}
+
+// Datos de la ficha para el formulario de edición (JSON).
+function FichaIndicador()
+{
+    $ind = indicadorConPrograma($_GET['idr'] ?? 0);
+    if (!$ind) responderJson(['ok' => false, 'msg' => 'El indicador ya no existe.']);
+    $ind['nivel'] = MIR_NIVELES[$ind['tipo']] ?? $ind['tipo'];
+    responderJson(['ok' => true, 'indicador' => $ind,
+                   'opciones' => ['dimension' => MIR_DIMENSIONES, 'sentido' => MIR_SENTIDOS, 'frecuencia' => MIR_FRECUENCIAS]]);
+}
+
+function GuardarFichaIndicador()
+{
+    $id    = (int)($_POST['id_indicador'] ?? 0);
+    $falla = function ($mensaje) { responderJson(['ok' => false, 'msg' => $mensaje]); };
+    if (!indicadorConPrograma($id)) $falla('El indicador ya no existe.');
+
+    $texto = function ($campo, $nombre, $maximo, $obligatorio = false) use ($falla) {
+        $valor = trim((string)($_POST[$campo] ?? ''));
+        if ($valor === '' && $obligatorio) $falla("El campo \"$nombre\" es obligatorio.");
+        if (mb_strlen($valor) > $maximo)   $falla("El campo \"$nombre\" admite máximo $maximo caracteres.");
+        return $valor === '' ? null : $valor;
+    };
+    $opcion = function ($campo, $nombre, array $validas) use ($falla) {
+        $valor = trim((string)($_POST[$campo] ?? ''));
+        if ($valor === '') return null;
+        if (!in_array($valor, $validas, true)) $falla("Selecciona un valor válido en \"$nombre\".");
+        return $valor;
+    };
+    $numero = function ($campo, $nombre) use ($falla) {
+        $valor = trim((string)($_POST[$campo] ?? ''));
+        if ($valor === '') return null;
+        if (!is_numeric($valor)) $falla("\"$nombre\" debe ser un número.");
+        return (float)$valor;
+    };
+
+    $descripcion   = $texto('descripcion', 'Resumen narrativo', 2000, true);
+    $unidad        = $texto('unidad_medida', 'Unidad de medida', 100, true);
+    $nombre        = $texto('nombre_indicador', 'Nombre del indicador', 255);
+    $formula       = $texto('formula', 'Fórmula de cálculo', 2000);
+    $dimension     = $opcion('dimension', 'Dimensión', MIR_DIMENSIONES);
+    $sentido       = $opcion('sentido', 'Sentido', MIR_SENTIDOS);
+    $frecuencia    = $opcion('frecuencia', 'Frecuencia de medición', MIR_FRECUENCIAS);
+    $lineaBase     = $numero('linea_base', 'Línea base');
+    $metaAnual     = $numero('meta_anual', 'Meta anual');
+    $medios        = $texto('medios_verificacion', 'Medios de verificación', 2000);
+    $supuestos     = $texto('supuestos', 'Supuestos', 2000);
+    $anioBase      = trim((string)($_POST['anio_linea_base'] ?? ''));
+    if ($anioBase !== '' && (!ctype_digit($anioBase) || (int)$anioBase < 2000 || (int)$anioBase > 2100)) {
+        $falla('El año de la línea base debe estar entre 2000 y 2100.');
+    }
+    $anioBase = $anioBase === '' ? null : (int)$anioBase;
+
+    ejecutarPreparado(
+        "UPDATE indicadores SET descripcion = ?, unidad_medida = ?, nombre_indicador = ?, formula = ?, dimension = ?,
+                sentido = ?, frecuencia = ?, linea_base = ?, anio_linea_base = ?, meta_anual = ?,
+                medios_verificacion = ?, supuestos = ?
+         WHERE id_indicador = ?",
+        'sssssssdidssi',
+        [$descripcion, $unidad, $nombre, $formula, $dimension, $sentido, $frecuencia, $lineaBase, $anioBase,
+         $metaAnual, $medios, $supuestos, $id]
+    );
+    try {
+        registrarBitacora('Editar ficha técnica', 'Indicador #' . $id . ': ' . mb_substr($nombre ?: $descripcion, 0, 120));
+    } catch (Throwable $error) {
+    }
+    responderJson(['ok' => true]);
+}
+
+/*
+ * % de cumplimiento del calendario según el sentido del indicador:
+ *  - Ascendente  (más es mejor, ej. personas atendidas): realizado / programado.
+ *  - Descendente (menos es mejor, ej. accidentes):       programado / realizado.
+ * Semáforo usual de las evaluaciones PbR: verde >= 90%, amarillo 70-89%, rojo < 70%.
+ */
+function cumplimientoIndicador($programado, $realizado, $sentido)
+{
+    if ($programado <= 0) return [null, '#adb5bd', 'Sin programación'];
+    if ($sentido === 'Descendente') {
+        $pct = $realizado > 0 ? $programado / $realizado * 100 : 100;
+    } else {
+        $pct = $realizado / $programado * 100;
+    }
+    $pct = round($pct, 1);
+    if ($pct >= 90) return [$pct, '#1a7f4b', 'Aceptable'];
+    if ($pct >= 70) return [$pct, '#b7791f', 'Con riesgo'];
+    return [$pct, '#b42318', 'Crítico'];
+}
+
+function calendarioIndicador($id_indicador, $anio)
+{
+    $porMes = array_fill(1, 12, ['programado' => 0.0, 'realizado' => 0.0]);
+    $filas  = consultarPreparado(
+        "SELECT mes, programado, realizado FROM indicador_calendario WHERE id_indicador = ? AND anio = ?",
+        'ii', [(int)$id_indicador, (int)$anio]
+    );
+    foreach ($filas as $f) {
+        $porMes[(int)$f['mes']] = ['programado' => (float)$f['programado'], 'realizado' => (float)$f['realizado']];
+    }
+    return $porMes;
+}
+
+// Encabezado y estilos comunes de las hojas imprimibles de la MIR.
+function inicioHojaMir($titulo)
+{
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= e($titulo) ?> — Tamazunchale</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1f2937; background: #fff; margin: 0; padding: 24px; }
+    .hoja { max-width: 1000px; margin: 0 auto; }
+    .encabezado { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 4px solid #D4AF37; padding-bottom: 10px; margin-bottom: 16px; }
+    .encabezado h1 { color: #0A2647; font-size: 18px; margin: 0; }
+    .encabezado p { margin: 2px 0 0; color: #4b5563; }
+    .acciones { text-align: right; }
+    .acciones button { background: #0A2647; color: #fff; border: 0; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    th, td { border: 1px solid #c9d1dc; padding: 6px 8px; vertical-align: top; text-align: left; }
+    th { background: #e8eef7; color: #0A2647; font-weight: 600; }
+    .seccion { background: #0A2647; color: #fff; font-weight: 700; padding: 6px 8px; margin: 18px 0 0; }
+    .etiqueta { width: 28%; background: #f4f6fa; font-weight: 600; color: #374151; }
+    .num { text-align: center; font-variant-numeric: tabular-nums; }
+    .vacio { color: #9ca3af; font-style: italic; }
+    .semaforo { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; }
+    .firmas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 70px; text-align: center; }
+    .firmas div { border-top: 1px solid #1f2937; padding-top: 6px; }
+    @media print { body { padding: 0; } .acciones { display: none; } .seccion, th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+<div class="hoja">
+<?php
+}
+
+// Muestra un valor o "Sin capturar".
+function valorMir($valor)
+{
+    return ($valor === null || $valor === '') ? '<span class="vacio">Sin capturar</span>' : nl2br(e($valor));
+}
+
+// Hoja imprimible con la ficha técnica de un indicador (se abre en otra pestaña).
+function FichaTecnicaIndicador()
+{
+    $ind = indicadorConPrograma($_GET['idr'] ?? 0);
+    if (!$ind) { echo 'El indicador ya no existe.'; return; }
+    $anio   = anioValido($_GET['anio'] ?? null);
+    $meses  = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    $cal    = calendarioIndicador($ind['id_indicador'], $anio);
+    $totalP = array_sum(array_column($cal, 'programado'));
+    $totalR = array_sum(array_column($cal, 'realizado'));
+    [$pct, $color, $leyenda] = cumplimientoIndicador($totalP, $totalR, $ind['sentido']);
+    $avanceMeta = ($ind['meta_anual'] !== null && (float)$ind['meta_anual'] > 0) ? round($totalR / (float)$ind['meta_anual'] * 100, 1) : null;
+
+    inicioHojaMir('Ficha técnica del indicador');
+?>
+    <div class="encabezado">
+        <div>
+            <h1>Ficha Técnica del Indicador</h1>
+            <p>H. Ayuntamiento de Tamazunchale, S.L.P. · Ejercicio <?= $anio ?></p>
+        </div>
+        <div class="acciones"><button onclick="window.print()">Imprimir / Guardar PDF</button></div>
+    </div>
+
+    <div class="seccion">1. Datos de identificación</div>
+    <table>
+        <tr><td class="etiqueta">Eje estratégico</td><td><?= e($ind['nombre_eje']) ?></td></tr>
+        <tr><td class="etiqueta">Programa</td><td><?= e($ind['nombre_programa']) ?></td></tr>
+        <tr><td class="etiqueta">Área responsable</td><td><?= valorMir($ind['responsable']) ?></td></tr>
+        <tr><td class="etiqueta">Nivel de la MIR</td><td><?= e(MIR_NIVELES[$ind['tipo']] ?? $ind['tipo']) ?></td></tr>
+        <tr><td class="etiqueta">Resumen narrativo (objetivo)</td><td><?= valorMir($ind['descripcion']) ?></td></tr>
+    </table>
+
+    <div class="seccion">2. Características del indicador</div>
+    <table>
+        <tr><td class="etiqueta">Nombre del indicador</td><td><?= valorMir($ind['nombre_indicador']) ?></td></tr>
+        <tr><td class="etiqueta">Fórmula de cálculo</td><td><?= valorMir($ind['formula']) ?></td></tr>
+        <tr><td class="etiqueta">Unidad de medida</td><td><?= valorMir($ind['unidad_medida']) ?></td></tr>
+        <tr><td class="etiqueta">Dimensión</td><td><?= valorMir($ind['dimension']) ?></td></tr>
+        <tr><td class="etiqueta">Sentido</td><td><?= valorMir($ind['sentido']) ?></td></tr>
+        <tr><td class="etiqueta">Frecuencia de medición</td><td><?= valorMir($ind['frecuencia']) ?></td></tr>
+    </table>
+
+    <div class="seccion">3. Línea base y meta</div>
+    <table>
+        <tr><th>Línea base</th><th>Año de la línea base</th><th>Meta anual <?= $anio ?></th><th>Realizado acumulado</th><th>Avance de la meta</th></tr>
+        <tr>
+            <td class="num"><?= $ind['linea_base'] !== null ? formatoNumero($ind['linea_base']) : '<span class="vacio">—</span>' ?></td>
+            <td class="num"><?= $ind['anio_linea_base'] ?: '<span class="vacio">—</span>' ?></td>
+            <td class="num"><?= $ind['meta_anual'] !== null ? formatoNumero($ind['meta_anual']) : '<span class="vacio">—</span>' ?></td>
+            <td class="num"><?= formatoNumero($totalR) ?></td>
+            <td class="num"><?= $avanceMeta !== null ? $avanceMeta . '%' : '<span class="vacio">—</span>' ?></td>
+        </tr>
+    </table>
+
+    <div class="seccion">4. Calendario <?= $anio ?> y cumplimiento</div>
+    <table>
+        <tr><th></th><?php foreach ($meses as $m): ?><th class="num"><?= $m ?></th><?php endforeach; ?><th class="num">Total</th></tr>
+        <tr><td class="etiqueta">Programado</td><?php foreach ($cal as $c): ?><td class="num"><?= formatoNumero($c['programado']) ?></td><?php endforeach; ?><td class="num"><strong><?= formatoNumero($totalP) ?></strong></td></tr>
+        <tr><td class="etiqueta">Realizado</td><?php foreach ($cal as $c): ?><td class="num"><?= formatoNumero($c['realizado']) ?></td><?php endforeach; ?><td class="num"><strong><?= formatoNumero($totalR) ?></strong></td></tr>
+    </table>
+    <p>
+        <span class="semaforo" style="background:<?= $color ?>;"></span>
+        <strong>Cumplimiento del calendario: <?= $pct !== null ? $pct . '%' : '—' ?></strong> (<?= e($leyenda) ?>).
+        Parámetros: verde 90% o más, amarillo de 70% a 89%, rojo menos de 70%<?= $ind['sentido'] === 'Descendente' ? '; al ser descendente se calcula programado ÷ realizado' : '' ?>.
+    </p>
+
+    <div class="seccion">5. Verificación</div>
+    <table>
+        <tr><td class="etiqueta">Medios de verificación</td><td><?= valorMir($ind['medios_verificacion']) ?></td></tr>
+        <tr><td class="etiqueta">Supuestos</td><td><?= valorMir($ind['supuestos']) ?></td></tr>
+    </table>
+
+    <div class="firmas"><div>Elaboró<br><small>Área responsable</small></div><div>Revisó<br><small>Dirección de Planeación</small></div><div>Autorizó<br><small>Presidencia Municipal</small></div></div>
+</div>
+</body>
+</html>
+<?php
+}
+
+// Hoja imprimible con la Matriz de Indicadores para Resultados de un programa.
+function MatrizMIR()
+{
+    $id_programa = (int)($_GET['idr'] ?? 0);
+    $programa = consultarPreparado(
+        "SELECT p.*, e.nombre_eje FROM programas p INNER JOIN ejes e ON p.id_eje = e.id_eje WHERE p.id_programa = ?",
+        'i', [$id_programa]
+    );
+    if (!$programa) { echo 'El programa ya no existe.'; return; }
+    $programa = $programa[0];
+
+    $indicadores = consultarPreparado(
+        "SELECT * FROM indicadores WHERE id_programa = ? AND activo = 1 ORDER BY orden, id_indicador",
+        'i', [$id_programa]
+    );
+    // Orden oficial: Fin, Propósito y cada Componente seguido de sus Actividades.
+    $filas = [];
+    foreach (['fin', 'proposito'] as $nivel) {
+        foreach ($indicadores as $i) if ($i['tipo'] === $nivel) $filas[] = [MIR_NIVELES[$nivel], $i];
+    }
+    $nC = 0;
+    foreach ($indicadores as $c) {
+        if ($c['tipo'] !== 'componente') continue;
+        $nC++;
+        $filas[] = ['Componente ' . $nC, $c];
+        $nA = 0;
+        foreach ($indicadores as $a) {
+            if ($a['tipo'] === 'actividad' && (int)$a['id_padre'] === (int)$c['id_indicador']) {
+                $nA++;
+                $filas[] = ['Actividad ' . $nC . '.' . $nA, $a];
+            }
+        }
+    }
+
+    inicioHojaMir('Matriz de Indicadores para Resultados');
+?>
+    <div class="encabezado">
+        <div>
+            <h1>Matriz de Indicadores para Resultados (MIR)</h1>
+            <p><?= e($programa['nombre_eje']) ?> · Programa: <strong><?= e($programa['nombre_programa']) ?></strong>
+               <?= $programa['responsable'] ? ' · ' . e($programa['responsable']) : '' ?></p>
+        </div>
+        <div class="acciones"><button onclick="window.print()">Imprimir / Guardar PDF</button></div>
+    </div>
+    <?php if (!$filas): ?>
+        <p class="vacio">Este programa todavía no tiene indicadores. Agrégalos en "Indicadores (MIR)".</p>
+    <?php else: ?>
+    <table>
+        <tr>
+            <th style="width:11%;">Nivel</th><th style="width:22%;">Resumen narrativo</th><th style="width:18%;">Indicador</th>
+            <th style="width:17%;">Fórmula</th><th style="width:8%;">Frecuencia</th><th style="width:12%;">Medios de verificación</th><th style="width:12%;">Supuestos</th>
+        </tr>
+        <?php foreach ($filas as [$nivel, $i]): ?>
+            <tr>
+                <td><strong><?= e($nivel) ?></strong></td>
+                <td><?= valorMir($i['descripcion']) ?></td>
+                <td><?= valorMir($i['nombre_indicador']) ?><?= $i['unidad_medida'] ? '<br><small>Unidad: ' . e($i['unidad_medida']) . '</small>' : '' ?></td>
+                <td><?= valorMir($i['formula']) ?></td>
+                <td><?= valorMir($i['frecuencia']) ?></td>
+                <td><?= valorMir($i['medios_verificacion']) ?></td>
+                <td><?= valorMir($i['supuestos']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </table>
+    <?php endif; ?>
+    <div class="firmas"><div>Elaboró<br><small>Área responsable</small></div><div>Revisó<br><small>Dirección de Planeación</small></div><div>Autorizó<br><small>Presidencia Municipal</small></div></div>
+</div>
+</body>
+</html>
+<?php
 }

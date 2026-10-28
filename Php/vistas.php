@@ -514,11 +514,14 @@ function FormularioUsuarios()
 
                     <div class="col-12">
                         <label class="form-label fw-semibold">Rol <span class="text-danger">*</span></label>
-                        <select class="form-select" id="rol" name="rol">
+                        <select class="form-select" id="rol" name="rol" onchange="mostrarDependencia(this.value)">
                             <option value="planeacion">Planeación</option>
+                            <option value="enlace">Enlace de dependencia</option>
                             <option value="administrador">Administrador</option>
                         </select>
                     </div>
+
+                    <?php selectDependencia('', false); ?>
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
@@ -544,6 +547,7 @@ function FormularioUsuariosActualizacion($resultado)
         $usuario = $columna['usuario'];
         $rol     = $columna['rol'];
         $activo  = $columna['activo'];
+        $dependencia = $columna['dependencia'] ?? '';
     }
 ?>
     <div class="container mt-4">
@@ -576,8 +580,9 @@ function FormularioUsuariosActualizacion($resultado)
 
                     <div class="col-12 col-md-6">
                         <label class="form-label fw-semibold">Rol</label>
-                        <select class="form-select" id="rol" name="rol">
+                        <select class="form-select" id="rol" name="rol" onchange="mostrarDependencia(this.value)">
                             <option value="planeacion"    <?php echo ($rol == 'planeacion')    ? 'selected' : '' ?>>Planeación</option>
+                            <option value="enlace"        <?php echo ($rol == 'enlace')        ? 'selected' : '' ?>>Enlace de dependencia</option>
                             <option value="administrador" <?php echo ($rol == 'administrador') ? 'selected' : '' ?>>Administrador</option>
                         </select>
                     </div>
@@ -589,6 +594,8 @@ function FormularioUsuariosActualizacion($resultado)
                             <option value="0" <?php echo ($activo == 0) ? 'selected' : '' ?>>Inactivo</option>
                         </select>
                     </div>
+
+                    <?php selectDependencia($dependencia, $rol === 'enlace'); ?>
 
                     <div class="col-12 d-grid gap-2">
                         <button type="submit"
@@ -976,4 +983,26 @@ function FilaIndicadorMIR($indicador, $calendario, $negrita)
     foreach ($realizado as $v) echo '<td class="text-center">' . $fmt($v) . '</td>';
     echo '<td class="text-center">' . $fmt($totalR) . '</td>
         </tr>';
+}
+
+// Selector de dependencia del formulario de usuarios (solo se ve con el rol "Enlace").
+// Las opciones son las Áreas responsables que ya existen en los programas.
+function selectDependencia($actual, $visible)
+{
+    $dependencias = listaDependencias();
+?>
+    <div class="col-12" id="cajaDependencia" <?= $visible ? '' : 'hidden' ?>>
+        <label class="form-label fw-semibold" for="dependencia">Dependencia del enlace <span class="text-danger">*</span></label>
+        <select class="form-select" id="dependencia" name="dependencia">
+            <option value="">Selecciona la dependencia...</option>
+            <?php foreach ($dependencias as $d): ?>
+                <option value="<?= e($d) ?>" <?= $d === $actual ? 'selected' : '' ?>><?= e($d) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <div class="form-text">El enlace solo verá y reportará las metas de los programas cuya "Área responsable" es esta dependencia.</div>
+        <?php if (!$dependencias): ?>
+            <div class="form-text text-danger">Todavía no hay programas con Área responsable. Captúrala en Programas para poder crear enlaces.</div>
+        <?php endif; ?>
+    </div>
+<?php
 }

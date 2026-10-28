@@ -62,6 +62,10 @@ switch ($idopc) {
     case 'GuardarCalendario':
     case 'ResumenAvanceProyecto':
     case 'DatosAvanceProgramas':
+    case 'FichaIndicador':
+    case 'GuardarFichaIndicador':
+    case 'FichaTecnicaIndicador':
+    case 'MatrizMIR':
         $obj->operaciones_bd();
         break;
 
@@ -91,6 +95,15 @@ switch ($idopc) {
     case 'PlanGuardarObservacion':
     case 'PlanCumplirAcuerdo':
     case 'PlanEliminarObservacion':
+    case 'PlanRevision':
+    case 'PlanAprobarAvance':
+    case 'PlanDevolverAvance':
+    case 'PlanContarPendientes':
+    case 'PlanMisAvances':
+    case 'PlanResumenEnlace':
+    case 'PlanSubirEvidencia':
+    case 'PlanBorrarEvidencia':
+    case 'PlanEvidenciasMeta':
         include('planeacion_extra.php');
         break;
 

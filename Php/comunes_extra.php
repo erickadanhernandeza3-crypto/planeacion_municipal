@@ -28,7 +28,33 @@ const TIPOS_OBSERVACION = ['Observación', 'Acuerdo', 'Problema'];
 const MINIMO_CONTRASENA = 8;
 
 // Roles que puede tener un usuario (columna usuarios.rol).
-const ROLES_VALIDOS = ['administrador', 'planeacion'];
+//  - enlace: persona de una dependencia (DIF, Obras...). Solo ve las metas de los
+//    programas cuyo "Área responsable" es su dependencia, y sus avances quedan
+//    "En revisión" hasta que Planeación los aprueba.
+const ROLES_VALIDOS = ['administrador', 'planeacion', 'enlace'];
+
+// Panel al que entra cada rol.
+const PANEL_POR_ROL = ['administrador' => 'administrador.php', 'planeacion' => 'planeacion.php', 'enlace' => 'enlace.php'];
+
+// Lo ÚNICO que puede pedir un enlace al controlador (todo lo demás: 403).
+const OPCIONES_ENLACE = [
+    'MantenerSesion', 'DatosProgramasPorEje',
+    'PlanSeguimiento', 'PlanDatosSeguimiento', 'PlanAlertas', 'PlanResumenAlertas',
+    'PlanFrmAvance', 'PlanGuardarAvance', 'PlanHistorialAvances', 'PlanFichaMeta',
+    'PlanFrmContrasena', 'PlanGuardarContrasena',
+    'PlanResumenEnlace', 'PlanMisAvances', 'PlanContarPendientes',
+    'PlanSubirEvidencia', 'PlanBorrarEvidencia', 'PlanEvidenciasMeta',
+];
+
+// Catálogos de la ficha técnica de los indicadores MIR (Php/operaciones.php).
+const MIR_DIMENSIONES = ['Eficacia', 'Eficiencia', 'Calidad', 'Economía'];
+const MIR_SENTIDOS    = ['Ascendente', 'Descendente'];
+const MIR_FRECUENCIAS = ['Mensual', 'Trimestral', 'Semestral', 'Anual'];
+const MIR_NIVELES     = ['fin' => 'Fin', 'proposito' => 'Propósito', 'componente' => 'Componente', 'actividad' => 'Actividad'];
+
+// Páginas de solo lectura que se abren en otra pestaña (window.open no puede
+// mandar la cabecera del token CSRF).
+const OPCIONES_NUEVA_PESTANA = ['PlanReporteEje', 'FichaTecnicaIndicador', 'MatrizMIR'];
 
 
 ////////////////////// SEGURIDAD //////////////////////
@@ -63,11 +89,14 @@ function protegerControlador($idopc)
         echo '<div class="alert alert-danger"><i class="bi bi-shield-lock me-1"></i>No tienes permiso para esta opción.</div>';
         exit;
     }
+    if ($_SESSION['rol'] === 'enlace' && !in_array($idopc, OPCIONES_ENLACE, true)) {
+        rechazar('No tienes permiso para esta opción.', 403);
+    }
     // Token CSRF: js/extras_ui.js lo manda en la cabecera X-CSRF-Token de cada petición.
     // Una página ajena no puede leerlo, así que no puede hacer que el navegador de un
     // usuario con sesión abierta cree, edite o borre registros sin que se dé cuenta.
-    // PlanReporteEje se abre en otra pestaña (no lleva cabecera) y es de solo lectura.
-    if ($idopc !== 'PlanReporteEje' && !csrfValido()) {
+    // Las páginas que se abren en otra pestaña no llevan cabecera y son de solo lectura.
+    if (!in_array($idopc, OPCIONES_NUEVA_PESTANA, true) && !csrfValido()) {
         rechazar('La página caducó. Recárgala (F5) e inténtalo de nuevo.', 403);
     }
     // La usa js/extras_ui.js para mantener viva la sesión mientras el usuario trabaja.
@@ -108,18 +137,75 @@ function mensajeSesion($texto)
          . ' <a href="index.php" class="fw-bold">Iniciar sesión de nuevo</a></div>';
 }
 
-// Revisa en el servidor que quien llama tenga sesión con el rol indicado.
-// Es la misma regla que usan administrador.php y planeacion.php al inicio.
-function verificarRol($rol)
+// Revisa en el servidor que quien llama tenga sesión con el rol indicado
+// (o con alguno de los roles, si se pasa una lista).
+function verificarRol($roles)
 {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-    if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== $rol) {
+    $roles = (array)$roles;
+    if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], $roles, true)) {
         http_response_code(403);
-        echo 'Acceso denegado. Esta opción es solo para el rol: ' . e($rol) . '.';
+        echo 'Acceso denegado. Esta opción es solo para: ' . e(implode(', ', $roles)) . '.';
         exit;
     }
+}
+
+function esEnlace()
+{
+    return ($_SESSION['rol'] ?? '') === 'enlace';
+}
+
+// Dependencia del enlace con sesión, leída de la base en cada petición
+// (si el administrador se la cambia o lo desactiva, aplica de inmediato).
+function dependenciaDelEnlace()
+{
+    static $dependencia = null;
+    if ($dependencia === null) {
+        $filas = consultarPreparado(
+            "SELECT dependencia FROM usuarios WHERE id_usuario = ? AND activo = 1 AND rol = 'enlace'",
+            'i', [(int)($_SESSION['id_usuario'] ?? 0)]
+        );
+        if (!$filas) rechazar('Tu cuenta ya no está activa como enlace. Vuelve a iniciar sesión.', 403);
+        $dependencia = trim((string)$filas[0]['dependencia']);
+    }
+    return $dependencia;
+}
+
+/*
+ * Condición SQL para que un enlace solo vea las metas de su dependencia.
+ * Para planeación y administrador no filtra nada.
+ * $alias es el alias de la tabla programas en la consulta.
+ * Devuelve [fragmento SQL que empieza con " AND", tipos, parámetros].
+ */
+function filtroDependencia($alias = 'p')
+{
+    if (!esEnlace()) return ['', '', []];
+    return [" AND TRIM($alias.responsable) = ?", 's', [dependenciaDelEnlace()]];
+}
+
+// Corta con 403 si un enlace intenta ver o tocar una meta de otra dependencia.
+function verificarMetaDeMiDependencia($id_meta)
+{
+    if (!esEnlace()) return;
+    [$sql, $tipos, $parametros] = filtroDependencia('p');
+    $filas = consultarPreparado(
+        "SELECT m.id_meta FROM metas m INNER JOIN programas p ON m.id_programa = p.id_programa
+         WHERE m.id_meta = ?" . $sql,
+        'i' . $tipos, array_merge([(int)$id_meta], $parametros)
+    );
+    if (!$filas) rechazar('Esta meta no pertenece a tu dependencia.', 403);
+}
+
+// Dependencias registradas: el "Área responsable" de los programas.
+function listaDependencias()
+{
+    $filas = consultarPreparado(
+        "SELECT DISTINCT TRIM(responsable) AS dependencia FROM programas
+         WHERE responsable IS NOT NULL AND TRIM(responsable) <> '' ORDER BY dependencia"
+    );
+    return array_column($filas, 'dependencia');
 }
 
 // Devuelve false (y cierra la sesión) si pasaron más de MINUTOS_INACTIVIDAD
@@ -455,7 +541,7 @@ function datosTrimestrales($anio)
          FROM metas m
          INNER JOIN programas p ON m.id_programa = p.id_programa
          INNER JOIN ejes e      ON p.id_eje = e.id_eje
-         LEFT JOIN avances_meta a ON a.id_meta = m.id_meta
+         LEFT JOIN avances_meta a ON a.id_meta = m.id_meta AND a.estado_revision = 'Aprobado'
          GROUP BY m.id_meta, e.nombre_eje, m.meta_programada, m.meta_alcanzada, m.fecha_inicio
          ORDER BY e.nombre_eje",
         'ssss', [$fin[1], $fin[2], $fin[3], $fin[4]]
@@ -528,3 +614,7 @@ function VistaTrimestral($idopcDatos)
     <div class="card"><div class="card-body"><div class="table-responsive" id="tablaTrimestral"></div></div></div>
 <?php
 }
+
+
+// Evidencias en Cloudinary (fotos y PDF de los avances).
+require_once __DIR__ . '/evidencias.php';

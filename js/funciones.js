@@ -155,7 +155,16 @@ function ValidarUsuarios(idopc, iddiv, idform, ops, idr, msg) {
   if (nombre === '')   { Swal.fire({ title: "El nombre es obligatorio", icon: "warning" }); return false; }
   if (usuario === '')  { Swal.fire({ title: "El usuario es obligatorio", icon: "warning" }); return false; }
   if (ops === 'Insert' && password.length < 8) { Swal.fire({ title: "La contraseña debe tener mínimo 8 caracteres", icon: "warning" }); return false; }
+  if (document.getElementById('rol').value === 'enlace' && !document.getElementById('dependencia').value) {
+    Swal.fire({ title: "Selecciona la dependencia del enlace", icon: "warning" }); return false;
+  }
   EnviarDatos(idopc, iddiv, idform, ops, idr, msg);
+}
+
+// Muestra el selector de dependencia solo cuando el rol es "Enlace de dependencia".
+function mostrarDependencia(rol) {
+  const caja = document.getElementById('cajaDependencia');
+  if (caja) caja.hidden = rol !== 'enlace';
 }
 
 
@@ -219,14 +228,28 @@ function renderIndicadoresPrograma(idPrograma, data) {
       </div>`;
   };
 
+  // La ficha técnica está completa cuando tiene lo mínimo que pide la MIR.
+  const fichaCompleta = (ind) => ind.nombre_indicador && ind.formula && ind.frecuencia && ind.sentido && ind.medios_verificacion;
+
   const filaIndicador = (ind) => `
     <div class="border rounded p-2 mb-2 bg-white">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
+        <div style="min-width:0;">
           <div class="fw-semibold">${escapar(ind.descripcion)}</div>
-          <div class="text-muted" style="font-size:.78rem;">Unidad: ${escapar(ind.unidad_medida)}</div>
+          <div class="text-muted" style="font-size:.78rem;">
+            ${ind.nombre_indicador ? 'Indicador: ' + escapar(ind.nombre_indicador) + ' · ' : ''}Unidad: ${escapar(ind.unidad_medida)}
+            ${fichaCompleta(ind)
+              ? '<span class="badge text-bg-success ms-1">Ficha completa</span>'
+              : '<span class="badge text-bg-warning ms-1">Ficha técnica incompleta</span>'}
+          </div>
         </div>
         <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirFichaIndicador(${ind.id_indicador}, ${idPrograma})" title="Ficha técnica">
+            <i class="bi bi-card-checklist me-1"></i>Ficha técnica
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="imprimirFichaIndicador(${ind.id_indicador})" title="Imprimir ficha técnica">
+            <i class="bi bi-printer"></i>
+          </button>
           <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarIndicador(${ind.id_indicador}, ${idPrograma})" title="Eliminar">
             <i class="bi bi-trash"></i>
           </button>
@@ -235,12 +258,15 @@ function renderIndicadoresPrograma(idPrograma, data) {
       ${tablaEvaluacion(ind)}
     </div>`;
 
-  let html = `<div class="d-flex align-items-center gap-2 mt-2">
+  let html = `<div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
                 <label class="form-label fw-semibold mb-0">Año de evaluación:</label>
                 <select class="form-select form-select-sm" style="width:auto;" onchange="anioIndicadorActual = parseInt(this.value); cargarIndicadoresPrograma(${idPrograma})">
                   ${[data.anio - 1, data.anio, data.anio + 1].map(a => `<option value="${a}" ${a === data.anio ? 'selected' : ''}>${a}</option>`).join('')}
                 </select>
                 <span class="text-muted" style="font-size:.78rem;">Escribe 1 si se cumplió o 0 si no; se guarda solo al cambiar de celda.</span>
+                <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="imprimirMatrizMIR(${idPrograma})">
+                  <i class="bi bi-table me-1"></i>Imprimir MIR del programa
+                </button>
               </div>`;
 
   html += `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 mb-2">
@@ -389,6 +415,112 @@ function eliminarIndicador(idIndicador, idPrograma) {
       })
       .catch(() => Swal.fire({ title: 'No se pudo eliminar', text: 'Recarga la página e inténtalo de nuevo.', icon: 'error' }));
   });
+}
+
+
+/////////////////////// Ficha técnica del indicador (MIR) ///////////////////////
+function abrirFichaIndicador(idIndicador, idPrograma) {
+  fetch('Php/controlador.php?idopc=FichaIndicador&idr=' + idIndicador)
+    .then(r => r.json())
+    .then(res => {
+      if (!res.ok) { Swal.fire({ title: res.msg || 'No se pudo abrir la ficha', icon: 'warning' }); return; }
+      const ind = res.indicador;
+      const valor = v => v === null || v === undefined ? '' : escapar(v);
+      const opciones = (lista, actual) => '<option value="">Sin definir</option>'
+        + lista.map(o => `<option value="${escapar(o)}" ${o === actual ? 'selected' : ''}>${escapar(o)}</option>`).join('');
+
+      document.querySelector('#ModalUnificado .modal-title').innerHTML = '<i class="bi bi-card-checklist me-2"></i>Ficha técnica del indicador';
+      document.getElementById('contenedorModal').innerHTML = `
+        <form id="formFichaIndicador">
+          <input type="hidden" name="id_indicador" value="${ind.id_indicador}">
+          <p class="text-muted mb-3" style="font-size:.85rem;">
+            ${escapar(ind.nombre_eje)} › ${escapar(ind.nombre_programa)} · Nivel: <strong>${escapar(ind.nivel)}</strong>
+          </p>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-semibold" for="fiDescripcion">Resumen narrativo (objetivo) <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="fiDescripcion" name="descripcion" rows="2" maxlength="2000" required>${valor(ind.descripcion)}</textarea>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-semibold" for="fiNombre">Nombre del indicador</label>
+              <input class="form-control" id="fiNombre" name="nombre_indicador" maxlength="255" value="${valor(ind.nombre_indicador)}"
+                     placeholder="Ej. Porcentaje de comunidades con jornadas médicas">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiUnidad">Unidad de medida <span class="text-danger">*</span></label>
+              <input class="form-control" id="fiUnidad" name="unidad_medida" maxlength="100" required value="${valor(ind.unidad_medida)}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold" for="fiFormula">Fórmula de cálculo</label>
+              <input class="form-control" id="fiFormula" name="formula" maxlength="2000" value="${valor(ind.formula)}"
+                     placeholder="Ej. (Comunidades atendidas / Comunidades programadas) × 100">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiDimension">Dimensión</label>
+              <select class="form-select" id="fiDimension" name="dimension">${opciones(res.opciones.dimension, ind.dimension)}</select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiSentido">Sentido</label>
+              <select class="form-select" id="fiSentido" name="sentido">${opciones(res.opciones.sentido, ind.sentido)}</select>
+              <div class="form-text">Ascendente: más es mejor. Descendente: menos es mejor.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiFrecuencia">Frecuencia de medición</label>
+              <select class="form-select" id="fiFrecuencia" name="frecuencia">${opciones(res.opciones.frecuencia, ind.frecuencia)}</select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiLineaBase">Línea base</label>
+              <input type="number" step="any" class="form-control" id="fiLineaBase" name="linea_base" value="${valor(ind.linea_base)}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiAnioBase">Año de la línea base</label>
+              <input type="number" min="2000" max="2100" class="form-control" id="fiAnioBase" name="anio_linea_base" value="${valor(ind.anio_linea_base)}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold" for="fiMeta">Meta anual</label>
+              <input type="number" step="any" class="form-control" id="fiMeta" name="meta_anual" value="${valor(ind.meta_anual)}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="fiMedios">Medios de verificación</label>
+              <textarea class="form-control" id="fiMedios" name="medios_verificacion" rows="3" maxlength="2000"
+                        placeholder="Ej. Listas de asistencia y reporte fotográfico en archivo de la Dirección de Salud">${valor(ind.medios_verificacion)}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="fiSupuestos">Supuestos</label>
+              <textarea class="form-control" id="fiSupuestos" name="supuestos" rows="3" maxlength="2000"
+                        placeholder="Ej. Las condiciones climáticas permiten el acceso a las comunidades">${valor(ind.supuestos)}</textarea>
+            </div>
+          </div>
+          <div class="mt-3 d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-primary" onclick="guardarFichaIndicador(${idPrograma})"><i class="bi bi-floppy me-1"></i>Guardar ficha</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="imprimirFichaIndicador(${ind.id_indicador})"><i class="bi bi-printer me-1"></i>Ver para imprimir</button>
+          </div>
+        </form>`;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('ModalUnificado')).show();
+    })
+    .catch(() => Swal.fire({ title: 'No se pudo abrir la ficha', text: 'Recarga la página e inténtalo de nuevo.', icon: 'error' }));
+}
+
+function guardarFichaIndicador(idPrograma) {
+  const form = document.getElementById('formFichaIndicador');
+  if (!form.reportValidity()) return;
+  fetch('Php/controlador.php?idopc=GuardarFichaIndicador', { method: 'POST', body: new FormData(form) })
+    .then(r => r.json())
+    .then(res => {
+      if (!res.ok) { Swal.fire({ title: 'No se pudo guardar', text: res.msg || '', icon: 'warning' }); return; }
+      bootstrap.Modal.getInstance(document.getElementById('ModalUnificado')).hide();
+      Swal.fire({ title: 'Ficha técnica guardada', icon: 'success', timer: 1400, showConfirmButton: false });
+      cargarIndicadoresPrograma(idPrograma);
+    })
+    .catch(() => Swal.fire({ title: 'No se pudo guardar', text: 'Es posible que tu sesión se haya cerrado. Recarga la página.', icon: 'error' }));
+}
+
+function imprimirFichaIndicador(idIndicador) {
+  window.open('Php/controlador.php?idopc=FichaTecnicaIndicador&idr=' + idIndicador + '&anio=' + anioIndicadorActual, '_blank');
+}
+
+function imprimirMatrizMIR(idPrograma) {
+  window.open('Php/controlador.php?idopc=MatrizMIR&idr=' + idPrograma, '_blank');
 }
 
 
@@ -573,9 +705,12 @@ const columnasUsuarios = [
   { "data": "usuario", "render": comoTexto },
   {
     "data": "rol",
-    "render": function (rol) {
-      const c = rol === 'administrador' ? 'background:#e8eef7;color:#0A2647;' : 'background:#fff3cd;color:#7d5a00;';
-      return `<span style="${c}font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${escapar(rol)}</span>`;
+    "render": function (rol, tipo, fila) {
+      const estilos = { administrador: 'background:#e8eef7;color:#0A2647;', planeacion: 'background:#fff3cd;color:#7d5a00;', enlace: 'background:#e0f2f1;color:#00695c;' };
+      const nombres = { administrador: 'Administrador', planeacion: 'Planeación', enlace: 'Enlace' };
+      if (tipo !== 'display') return (nombres[rol] || rol) + (fila.dependencia ? ' ' + fila.dependencia : '');
+      return `<span style="${estilos[rol] || ''}font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">${escapar(nombres[rol] || rol)}</span>`
+           + (fila.dependencia ? `<div style="font-size:.72rem;color:#6b7280;margin-top:2px;">${escapar(fila.dependencia)}</div>` : '');
     }
   },
   {

@@ -22,10 +22,28 @@ require_once __DIR__ . '/comunes_extra.php';
 
 $idopc = $_GET['idopc'] ?? '';
 
-// Ninguna opción de este archivo se ejecuta si no hay sesión de planeación.
-verificarRol('planeacion');
+// Ninguna opción de este archivo se ejecuta sin sesión de planeación o de enlace.
+// Un enlace solo llega a las opciones de OPCIONES_ENLACE (lo revisa controlador.php)
+// y cada una filtra por su dependencia.
+verificarRol(['planeacion', 'enlace']);
+
+// Opciones que solo usa Planeación aunque estén en este archivo.
+if (in_array($idopc, ['PlanRevision', 'PlanAprobarAvance', 'PlanDevolverAvance'], true)) {
+    verificarRol('planeacion');
+}
 
 switch ($idopc) {
+
+    // Revisión de avances de los enlaces y evidencias
+    case 'PlanRevision':           VistaRevision();           break;
+    case 'PlanAprobarAvance':      AprobarAvance();           break;
+    case 'PlanDevolverAvance':     DevolverAvance();          break;
+    case 'PlanContarPendientes':   ContarPendientes();        break;
+    case 'PlanMisAvances':         VistaMisAvances();         break;
+    case 'PlanResumenEnlace':      ResumenEnlace();           break;
+    case 'PlanSubirEvidencia':     SubirEvidencia();          break;
+    case 'PlanBorrarEvidencia':    BorrarEvidencia();         break;
+    case 'PlanEvidenciasMeta':     EvidenciasMeta();          break;
 
     case 'PlanAlertas':            VistaAlertas();            break;
     case 'PlanResumenAlertas':     ResumenAlertas();          break;
@@ -77,12 +95,15 @@ function obtenerMeta($id_meta)
 // Conteos para el aviso del inicio del panel.
 function ResumenAlertas()
 {
+    [$filtro, $tipos, $parametros] = filtroDependencia('p');
     $filas = consultarPreparado(
         "SELECT
-            SUM(fecha_limite < CURDATE()) AS vencidas,
-            SUM(fecha_limite BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)) AS por_vencer
-         FROM metas
-         WHERE estado <> 'Terminado' AND fecha_limite IS NOT NULL"
+            SUM(m.fecha_limite < CURDATE()) AS vencidas,
+            SUM(m.fecha_limite BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)) AS por_vencer
+         FROM metas m
+         INNER JOIN programas p ON m.id_programa = p.id_programa
+         WHERE m.estado <> 'Terminado' AND m.fecha_limite IS NOT NULL" . $filtro,
+        $tipos, $parametros
     );
     responderJson([
         'vencidas'   => (int)($filas[0]['vencidas'] ?? 0),
@@ -99,9 +120,11 @@ function VistaAlertas()
                 INNER JOIN programas p ON m.id_programa = p.id_programa
                 INNER JOIN ejes e      ON p.id_eje = e.id_eje
                 WHERE m.estado <> 'Terminado' AND m.fecha_limite IS NOT NULL ";
+    [$filtro, $tipos, $parametros] = filtroDependencia('p');
+    $sqlBase .= $filtro . ' ';
 
-    $vencidas  = consultarPreparado($sqlBase . "AND m.fecha_limite < CURDATE() ORDER BY m.fecha_limite ASC");
-    $porVencer = consultarPreparado($sqlBase . "AND m.fecha_limite BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY) ORDER BY m.fecha_limite ASC");
+    $vencidas  = consultarPreparado($sqlBase . "AND m.fecha_limite < CURDATE() ORDER BY m.fecha_limite ASC", $tipos, $parametros);
+    $porVencer = consultarPreparado($sqlBase . "AND m.fecha_limite BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY) ORDER BY m.fecha_limite ASC", $tipos, $parametros);
 ?>
     <h5 class="fw-bold mb-1" style="color:#0A2647;" id="tituloAlertas">
         <i class="bi bi-alarm me-2"></i>Alertas de Vencimiento
@@ -128,7 +151,7 @@ function VistaAlertas()
     <?php
     TablaAlertas('Vencidas', 'bi-exclamation-octagon', '#c0392b', $vencidas, true);
     TablaAlertas('Por vencer', 'bi-hourglass-split', '#c89b00', $porVencer, false);
-    TablaAcuerdosPendientes();
+    if (!esEnlace()) TablaAcuerdosPendientes();
 }
 
 function TablaAlertas($titulo, $icono, $color, $metas, $esVencida)
@@ -185,7 +208,7 @@ function botonesAccionMeta($id_meta)
     return '<a href="#" onclick="abrirFormAvance(' . $id . ');return false;" class="fs-5 me-2" title="Registrar avance"><i class="bi bi-plus-circle-fill" style="color:#2fa86a;"></i></a>'
          . '<a href="#" onclick="abrirHistorial(' . $id . ');return false;" class="fs-5 me-2" title="Historial de avances"><i class="bi bi-clock-history" style="color:#0A2647;"></i></a>'
          . '<a href="#" onclick="abrirFicha(' . $id . ');return false;" class="fs-5 me-2" title="Ficha de la meta"><i class="bi bi-eye-fill" style="color:#c89b00;"></i></a>'
-         . '<a href="#" onclick="abrirObservaciones(' . $id . ');return false;" class="fs-5" title="Observaciones y acuerdos"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a>';
+         . (esEnlace() ? '' : '<a href="#" onclick="abrirObservaciones(' . $id . ');return false;" class="fs-5" title="Observaciones y acuerdos"><i class="bi bi-chat-left-text-fill" style="color:#5b7db1;"></i></a>');
 }
 
 
@@ -292,8 +315,8 @@ function DatosSeguimiento()
             INNER JOIN programas p ON m.id_programa = p.id_programa
             INNER JOIN ejes e      ON p.id_eje = e.id_eje
             WHERE 1 = 1";
-    $tipos      = '';
-    $parametros = [];
+    [$filtro, $tipos, $parametros] = filtroDependencia('p');
+    $sql .= $filtro;
 
     if ($id_eje > 0)      { $sql .= " AND e.id_eje = ?";      $tipos .= 'i'; $parametros[] = $id_eje; }
     if ($id_programa > 0) { $sql .= " AND p.id_programa = ?"; $tipos .= 'i'; $parametros[] = $id_programa; }
@@ -333,6 +356,7 @@ function DatosSeguimiento()
 function FormularioAvance()
 {
     $id_meta = (int)($_GET['idr'] ?? 0);
+    verificarMetaDeMiDependencia($id_meta);
     $meta    = obtenerMeta($id_meta);
     if (!$meta) { echo '<div class="alert alert-warning">La meta no existe.</div>'; return; }
 
@@ -351,24 +375,35 @@ function FormularioAvance()
         <div class="col-4"><div class="p-2 rounded" style="background:#fff3cd;">Falta<br><strong><?= formatoNumero($faltante) ?></strong></div></div>
     </div>
 
+    <?php if (esEnlace()): ?>
+        <div class="alert alert-info py-2" style="font-size:.82rem;">
+            <i class="bi bi-info-circle me-1"></i>Tu avance quedará <strong>En revisión</strong>. Se suma a la meta cuando Planeación lo apruebe.
+        </div>
+    <?php endif; ?>
+
     <form id="frmAvance" onsubmit="guardarAvance(event)">
         <input type="hidden" name="id_meta" value="<?= (int)$meta['id_meta'] ?>">
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label fw-semibold">Cantidad avanzada (<?= e($meta['unidad_medida']) ?>) <span class="text-danger">*</span></label>
+                <label class="form-label fw-semibold" for="valor_avance">Cantidad avanzada (<?= e($meta['unidad_medida']) ?>) <span class="text-danger">*</span></label>
                 <input type="number" step="0.01" min="0.01" class="form-control" id="valor_avance" name="valor_avance" required>
             </div>
             <div class="col-md-6">
-                <label class="form-label fw-semibold">Fecha del avance <span class="text-danger">*</span></label>
+                <label class="form-label fw-semibold" for="fecha_avance">Fecha del avance <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" id="fecha_avance" name="fecha_avance" value="<?= $hoy ?>" max="<?= $hoy ?>" required>
             </div>
             <div class="col-12">
-                <label class="form-label fw-semibold">Descripción</label>
+                <label class="form-label fw-semibold" for="descripcion_avance">Descripción</label>
                 <textarea class="form-control" id="descripcion_avance" name="descripcion" rows="2" maxlength="255" placeholder="¿Qué se realizó? Ej. Se entregaron 20 despensas en la comunidad X"></textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-semibold" for="evidencias_avance">Evidencias <span class="text-muted fw-normal">(fotos o PDF, opcional)</span></label>
+                <input type="file" class="form-control" id="evidencias_avance" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+                <div class="form-text">Hasta <?= EVIDENCIA_MAX_POR_AVANCE ?> archivos de máximo 5 MB. Las fotos se reducen solas antes de subirse.</div>
             </div>
         </div>
         <div class="mt-3 d-flex gap-2">
-            <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar avance</button>
+            <button type="submit" class="btn btn-primary" id="btnGuardarAvance"><i class="bi bi-save me-1"></i><?= esEnlace() ? 'Enviar a revisión' : 'Guardar avance' ?></button>
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
         </div>
     </form>
@@ -376,12 +411,12 @@ function FormularioAvance()
 }
 
 /*
- * Guarda el avance y actualiza la meta en UNA TRANSACCIÓN:
- *  1. Inserta el avance en avances_meta.
- *  2. Suma el valor a metas.meta_alcanzada (se suma, así no se pierde lo capturado antes).
- *  3. Recalcula metas.estado con la misma regla de siempre.
- *  4. Lo registra en la bitácora.
- * Si cualquier paso falla, se revierte todo (rollback).
+ * Guarda un avance.
+ *  - Planeación: el avance queda Aprobado y en la MISMA TRANSACCIÓN se suma a
+ *    metas.meta_alcanzada y se recalcula metas.estado (como siempre).
+ *  - Enlace: el avance queda "En revisión" y la meta no cambia hasta que
+ *    Planeación lo apruebe (AprobarAvance).
+ * Responde el id del avance para que el navegador suba las evidencias.
  */
 function GuardarAvance()
 {
@@ -393,12 +428,15 @@ function GuardarAvance()
     $fecha       = trim($_POST['fecha_avance'] ?? '');
     $descripcion = mb_substr(trim($_POST['descripcion'] ?? ''), 0, 255);
     $id_usuario  = (int)$_SESSION['id_usuario'];
+    $enRevision  = esEnlace();
+
+    verificarMetaDeMiDependencia($id_meta);
 
     // Validaciones del servidor (aunque el navegador ya valide, aquí es obligatorio)
     if ($valor <= 0) {
         responderJson(['ok' => false, 'mensaje' => 'La cantidad debe ser mayor a 0.']);
     }
-    $fechaObj = DateTime::createFromFormat('Y-m-d', $fecha);
+    $fechaObj = DateTime::createFromFormat('!Y-m-d', $fecha);
     if (!$fechaObj || $fechaObj->format('Y-m-d') !== $fecha) {
         responderJson(['ok' => false, 'mensaje' => 'La fecha no es válida.']);
     }
@@ -409,49 +447,73 @@ function GuardarAvance()
     mysqli_begin_transaction($conexion);
     try {
         // Bloquea la fila de la meta mientras se actualiza (evita que dos capturas se pisen)
-        $stmt = mysqli_prepare($conexion, "SELECT actividad, meta_programada, meta_alcanzada FROM metas WHERE id_meta = ? FOR UPDATE");
-        mysqli_stmt_bind_param($stmt, 'i', $id_meta);
-        mysqli_stmt_execute($stmt);
-        $meta = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
-        mysqli_stmt_close($stmt);
-        if (!$meta) {
-            throw new Exception('La meta no existe.');
+        $filas = consultarPreparado("SELECT actividad, meta_programada, meta_alcanzada FROM metas WHERE id_meta = ? FOR UPDATE", 'i', [$id_meta]);
+        if (!$filas) throw new Exception('La meta no existe.');
+        $meta = $filas[0];
+
+        $estadoRevision = $enRevision ? 'En revisión' : 'Aprobado';
+        ejecutarPreparado(
+            "INSERT INTO avances_meta (id_meta, valor_avance, descripcion, fecha_avance, registrado_por, estado_revision, revisado_por, revisado_en)
+             VALUES (?, ?, ?, ?, ?, ?, ?, " . ($enRevision ? 'NULL' : 'NOW()') . ")",
+            'idssisi', [$id_meta, $valor, $descripcion, $fecha, $id_usuario, $estadoRevision, $enRevision ? null : $id_usuario]
+        );
+        $id_avance = (int)mysqli_insert_id($conexion);
+
+        if ($enRevision) {
+            registrarBitacora('Enviar avance a revisión', 'Meta #' . $id_meta . ' (' . $meta['actividad'] . '): +' . formatoNumero($valor));
+            $mensaje = 'Avance enviado a revisión. Se sumará a la meta cuando Planeación lo apruebe.';
+        } else {
+            [$nuevaAlcanzada, $nuevoEstado] = sumarAvanceAMeta($id_meta, $meta, $valor);
+            registrarBitacora('Registrar avance', 'Meta #' . $id_meta . ' (' . $meta['actividad'] . '): +' . formatoNumero($valor) . ', nuevo total ' . formatoNumero($nuevaAlcanzada) . ', estado ' . $nuevoEstado);
+            $mensaje = 'Avance registrado. Total alcanzado: ' . formatoNumero($nuevaAlcanzada) . ' — Estado: ' . $nuevoEstado;
         }
 
-        // 1. Insertar el avance
-        $stmt = mysqli_prepare($conexion, "INSERT INTO avances_meta (id_meta, valor_avance, descripcion, fecha_avance, registrado_por) VALUES (?, ?, ?, ?, ?)");
-        mysqli_stmt_bind_param($stmt, 'idssi', $id_meta, $valor, $descripcion, $fecha, $id_usuario);
-        if (!mysqli_stmt_execute($stmt)) throw new Exception('No se pudo guardar el avance.');
-        mysqli_stmt_close($stmt);
-
-        // 2 y 3. Nuevo alcanzado y nuevo estado
-        $nuevaAlcanzada = (float)$meta['meta_alcanzada'] + $valor;
-        $nuevoEstado    = calcularEstado((float)$meta['meta_programada'], $nuevaAlcanzada);
-
-        $stmt = mysqli_prepare($conexion, "UPDATE metas SET meta_alcanzada = ?, estado = ? WHERE id_meta = ?");
-        mysqli_stmt_bind_param($stmt, 'dsi', $nuevaAlcanzada, $nuevoEstado, $id_meta);
-        if (!mysqli_stmt_execute($stmt)) throw new Exception('No se pudo actualizar la meta.');
-        mysqli_stmt_close($stmt);
-
-        // 4. Bitácora
-        registrarBitacora('Registrar avance', 'Meta #' . $id_meta . ' (' . $meta['actividad'] . '): +' . formatoNumero($valor) . ', nuevo total ' . formatoNumero($nuevaAlcanzada) . ', estado ' . $nuevoEstado);
-
         mysqli_commit($conexion);
-        responderJson(['ok' => true, 'mensaje' => 'Avance registrado. Total alcanzado: ' . formatoNumero($nuevaAlcanzada) . ' — Estado: ' . $nuevoEstado]);
+        responderJson(['ok' => true, 'id_avance' => $id_avance, 'en_revision' => $enRevision, 'mensaje' => $mensaje]);
 
     } catch (Throwable $error) {
         mysqli_rollback($conexion);
-        responderJson(['ok' => false, 'mensaje' => 'No se guardó nada. ' . $error->getMessage()]);
+        error_log('GuardarAvance: ' . $error);
+        responderJson(['ok' => false, 'mensaje' => 'No se guardó nada. Inténtalo de nuevo.']);
     }
+}
+
+// Suma un avance aprobado a la meta y recalcula su estado (la meta ya debe estar bloqueada con FOR UPDATE).
+function sumarAvanceAMeta($id_meta, array $meta, $valor)
+{
+    $nuevaAlcanzada = (float)$meta['meta_alcanzada'] + (float)$valor;
+    $nuevoEstado    = calcularEstado((float)$meta['meta_programada'], $nuevaAlcanzada);
+    ejecutarPreparado("UPDATE metas SET meta_alcanzada = ?, estado = ? WHERE id_meta = ?", 'dsi', [$nuevaAlcanzada, $nuevoEstado, $id_meta]);
+    return [$nuevaAlcanzada, $nuevoEstado];
+}
+
+// Etiqueta del estado de revisión de un avance.
+function etiquetaRevision($estado)
+{
+    $c = ['En revisión' => ['#7d5a00', '#fff3cd', 'bi-hourglass-split'], 'Devuelto' => ['#7b1f1f', '#fde8e8', 'bi-arrow-return-left'], 'Aprobado' => ['#1a6b3c', '#d4f4e2', 'bi-check-circle']];
+    [$texto, $fondo, $icono] = $c[$estado] ?? ['#333', '#eee', 'bi-circle'];
+    return '<span style="background:' . $fondo . ';color:' . $texto . ';font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;">'
+         . '<i class="bi ' . $icono . ' me-1"></i>' . e($estado) . '</span>';
+}
+
+// Evidencias agrupadas por avance (para no consultar una vez por avance).
+function evidenciasPorAvance(array $evidencias)
+{
+    $porAvance = [];
+    foreach ($evidencias as $ev) {
+        if ($ev['id_avance']) $porAvance[(int)$ev['id_avance']][] = $ev;
+    }
+    return $porAvance;
 }
 
 // Línea de tiempo de avances de una meta (HTML). Se usa sola y dentro de la ficha.
 function LineaTiempoAvances($id_meta)
 {
     $avances = consultarPreparado(
-        "SELECT a.valor_avance, a.descripcion, a.fecha_avance, a.creado_en, u.nombre
+        "SELECT a.*, u.nombre, r.nombre AS nombre_revisor
          FROM avances_meta a
          LEFT JOIN usuarios u ON a.registrado_por = u.id_usuario
+         LEFT JOIN usuarios r ON a.revisado_por = r.id_usuario
          WHERE a.id_meta = ?
          ORDER BY a.fecha_avance DESC, a.id_avance DESC",
         'i', [$id_meta]
@@ -461,16 +523,26 @@ function LineaTiempoAvances($id_meta)
         echo '<p class="text-muted" style="font-size:.85rem;"><i class="bi bi-info-circle me-1"></i>Esta meta todavía no tiene avances registrados.</p>';
         return;
     }
+    $evidencias = evidenciasPorAvance(evidenciasDeMeta($id_meta));
 
     echo '<div style="border-left:3px solid #D4AF37;margin-left:8px;padding-left:18px;">';
     foreach ($avances as $a) {
+        $aprobado = $a['estado_revision'] === 'Aprobado';
         echo '<div style="position:relative;margin-bottom:1rem;">'
-           . '<span style="position:absolute;left:-27px;top:3px;width:15px;height:15px;border-radius:50%;background:#0A2647;border:3px solid #D4AF37;"></span>'
+           . '<span style="position:absolute;left:-27px;top:3px;width:15px;height:15px;border-radius:50%;background:' . ($aprobado ? '#0A2647' : '#adb5bd') . ';border:3px solid #D4AF37;"></span>'
            . '<div style="font-size:.78rem;color:#6c757d;">' . formatoFecha($a['fecha_avance'])
-           . ' · registrado por <strong>' . e($a['nombre'] ?? 'Usuario eliminado') . '</strong></div>'
-           . '<div style="font-weight:700;color:#1a6b3c;">+' . formatoNumero($a['valor_avance']) . '</div>'
-           . ($a['descripcion'] !== null && $a['descripcion'] !== '' ? '<div style="font-size:.85rem;">' . e($a['descripcion']) . '</div>' : '')
-           . '</div>';
+           . ' · registrado por <strong>' . e($a['nombre'] ?? 'Usuario eliminado') . '</strong>'
+           . ($aprobado ? '' : ' ' . etiquetaRevision($a['estado_revision'])) . '</div>'
+           . '<div style="font-weight:700;color:' . ($aprobado ? '#1a6b3c' : '#6c757d') . ';">+' . formatoNumero($a['valor_avance'])
+           . ($aprobado ? '' : ' <span style="font-weight:400;font-size:.75rem;">(no se suma hasta aprobarse)</span>') . '</div>'
+           . ($a['descripcion'] !== null && $a['descripcion'] !== '' ? '<div style="font-size:.85rem;">' . e($a['descripcion']) . '</div>' : '');
+        if ($a['estado_revision'] === 'Devuelto' && $a['comentario_revision']) {
+            echo '<div class="mt-1 p-2 rounded" style="background:#fde8e8;font-size:.8rem;"><strong>Devuelto por ' . e($a['nombre_revisor'] ?? 'Planeación') . ':</strong> ' . e($a['comentario_revision']) . '</div>';
+        }
+        if (!empty($evidencias[(int)$a['id_avance']])) {
+            echo '<div class="mt-2">' . htmlEvidencias($evidencias[(int)$a['id_avance']]) . '</div>';
+        }
+        echo '</div>';
     }
     echo '</div>';
 }
@@ -478,6 +550,7 @@ function LineaTiempoAvances($id_meta)
 function HistorialAvances()
 {
     $id_meta = (int)($_GET['idr'] ?? 0);
+    verificarMetaDeMiDependencia($id_meta);
     $meta    = obtenerMeta($id_meta);
     if (!$meta) { echo '<div class="alert alert-warning">La meta no existe.</div>'; return; }
 ?>
@@ -496,6 +569,7 @@ function HistorialAvances()
 function FichaMeta()
 {
     $id_meta = (int)($_GET['idr'] ?? 0);
+    verificarMetaDeMiDependencia($id_meta);
     $meta    = obtenerMeta($id_meta);
     if (!$meta) { echo '<div class="alert alert-warning">La meta no existe.</div>'; return; }
 
@@ -546,12 +620,261 @@ function FichaMeta()
     </p>
 
     <hr>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="fw-bold mb-0" style="color:#0A2647;"><i class="bi bi-images me-2"></i>Evidencias</h6>
+        <label class="btn btn-outline-primary btn-sm mb-0">
+            <i class="bi bi-upload me-1"></i>Agregar fotos o PDF
+            <input type="file" hidden accept="image/jpeg,image/png,image/webp,application/pdf" multiple
+                   onchange="subirEvidenciasMeta(<?= (int)$id_meta ?>, this)">
+        </label>
+    </div>
+    <div id="evidenciasMeta"><?= htmlEvidencias(evidenciasDeMeta($id_meta), 'Esta meta todavía no tiene evidencias.') ?></div>
+
+    <hr>
     <h6 class="fw-bold mb-3" style="color:#0A2647;"><i class="bi bi-clock-history me-2"></i>Historial de avances</h6>
     <?php LineaTiempoAvances($id_meta); ?>
     <button class="btn btn-primary btn-sm mt-2" onclick="abrirFormAvance(<?= (int)$id_meta ?>)"><i class="bi bi-plus-circle me-1"></i>Registrar avance</button>
 
     <hr>
-    <?php SeccionObservaciones($id_meta); ?>
+    <?php SeccionObservaciones($id_meta, esEnlace()); ?>
+<?php
+}
+
+
+////////////////////// REVISIÓN DE AVANCES (Planeación aprueba lo que mandan los enlaces) //////////////////////
+
+function VistaRevision()
+{
+    $pendientes = consultarPreparado(
+        "SELECT a.*, u.nombre AS nombre_enlace, u.dependencia, m.actividad, m.unidad_medida,
+                m.meta_programada, m.meta_alcanzada, p.nombre_programa, e.nombre_eje
+         FROM avances_meta a
+         INNER JOIN metas m     ON a.id_meta = m.id_meta
+         INNER JOIN programas p ON m.id_programa = p.id_programa
+         INNER JOIN ejes e      ON p.id_eje = e.id_eje
+         LEFT JOIN usuarios u   ON a.registrado_por = u.id_usuario
+         WHERE a.estado_revision = 'En revisión'
+         ORDER BY a.creado_en ASC"
+    );
+    $recientes = consultarPreparado(
+        "SELECT a.valor_avance, a.estado_revision, a.revisado_en, a.comentario_revision,
+                m.actividad, m.id_meta, u.nombre AS nombre_enlace, r.nombre AS nombre_revisor
+         FROM avances_meta a
+         INNER JOIN metas m   ON a.id_meta = m.id_meta
+         LEFT JOIN usuarios u ON a.registrado_por = u.id_usuario
+         LEFT JOIN usuarios r ON a.revisado_por = r.id_usuario
+         WHERE a.estado_revision IN ('Aprobado', 'Devuelto') AND a.revisado_en IS NOT NULL
+           AND u.rol = 'enlace'
+         ORDER BY a.revisado_en DESC LIMIT 15"
+    );
+    // Evidencias de todos los avances pendientes en una sola consulta
+    $evidencias = [];
+    if ($pendientes) {
+        $ids = array_map(fn($a) => (int)$a['id_avance'], $pendientes);
+        $evidencias = evidenciasPorAvance(consultarPreparado(
+            "SELECT ev.*, 'En revisión' AS estado_revision, u.nombre AS nombre_usuario FROM evidencias ev
+             LEFT JOIN usuarios u ON ev.subido_por = u.id_usuario
+             WHERE ev.id_avance IN (" . implode(',', array_fill(0, count($ids), '?')) . ")
+             ORDER BY ev.id_evidencia",
+            str_repeat('i', count($ids)), $ids
+        ));
+    }
+?>
+    <h5 class="fw-bold mb-1" style="color:#0A2647;" id="tituloRevision"><i class="bi bi-clipboard-check me-2"></i>Revisión de avances</h5>
+    <p class="text-muted mb-4" style="font-size:.85rem;">
+        Avances que capturaron los enlaces de las dependencias. Al aprobarlos se suman a la meta; si los devuelves, el enlace ve tu comentario.
+    </p>
+
+    <?php if (!$pendientes): ?>
+        <div class="aviso-alerta" style="--color:#1a7f4b;"><i class="bi bi-check-circle"></i><span>No hay avances pendientes de revisión.</span></div>
+    <?php endif; ?>
+
+    <?php foreach ($pendientes as $a):
+        $programada = (float)$a['meta_programada'];
+        $antes      = $programada > 0 ? round(min($a['meta_alcanzada'] / $programada, 1) * 100, 1) : 0;
+        $despues    = $programada > 0 ? round(min(($a['meta_alcanzada'] + $a['valor_avance']) / $programada, 1) * 100, 1) : 0;
+    ?>
+        <div class="card mb-3" id="revision-<?= (int)$a['id_avance'] ?>">
+            <div class="card-body">
+                <div class="d-flex justify-content-between flex-wrap gap-2">
+                    <div>
+                        <div style="font-size:.72rem;color:#6c757d;text-transform:uppercase;letter-spacing:.04em;"><?= e($a['nombre_eje']) ?> › <?= e($a['nombre_programa']) ?></div>
+                        <div class="fw-bold" style="color:#0A2647;"><?= e($a['actividad']) ?></div>
+                        <div style="font-size:.8rem;" class="text-muted">
+                            <i class="bi bi-person me-1"></i><?= e($a['nombre_enlace'] ?? 'Usuario eliminado') ?>
+                            <?= $a['dependencia'] ? ' · ' . e($a['dependencia']) : '' ?> · enviado el <?= date('d/m/Y H:i', strtotime($a['creado_en'])) ?>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold" style="font-size:1.3rem;color:#1a6b3c;">+<?= formatoNumero($a['valor_avance']) ?> <span style="font-size:.8rem;font-weight:400;"><?= e($a['unidad_medida']) ?></span></div>
+                        <div style="font-size:.78rem;" class="text-muted">Avance de la meta: <?= $antes ?>% → <strong><?= $despues ?>%</strong></div>
+                    </div>
+                </div>
+                <div class="mt-2" style="font-size:.85rem;">
+                    <strong>Fecha del avance:</strong> <?= formatoFecha($a['fecha_avance']) ?>
+                    <?php if ($a['descripcion']): ?><br><strong>Descripción:</strong> <?= e($a['descripcion']) ?><?php endif; ?>
+                </div>
+                <div class="mt-2"><?= htmlEvidencias($evidencias[(int)$a['id_avance']] ?? [], 'El enlace no adjuntó evidencias.') ?></div>
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    <button class="btn btn-success btn-sm" onclick="aprobarAvance(<?= (int)$a['id_avance'] ?>)"><i class="bi bi-check-lg me-1"></i>Aprobar</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="devolverAvance(<?= (int)$a['id_avance'] ?>)"><i class="bi bi-arrow-return-left me-1"></i>Devolver con comentario</button>
+                    <button class="btn btn-link btn-sm" onclick="abrirFicha(<?= (int)$a['id_meta'] ?>)">Ver ficha de la meta</button>
+                </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+
+    <?php if ($recientes): ?>
+        <h6 class="fw-bold mt-4 mb-2" style="color:#0A2647;">Revisados recientemente</h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle" style="font-size:.82rem;">
+                <thead class="table-light"><tr><th>Fecha</th><th>Enlace</th><th>Meta</th><th>Cantidad</th><th>Resultado</th><th>Revisó</th></tr></thead>
+                <tbody>
+                <?php foreach ($recientes as $r): ?>
+                    <tr>
+                        <td class="text-nowrap"><?= date('d/m/Y H:i', strtotime($r['revisado_en'])) ?></td>
+                        <td><?= e($r['nombre_enlace'] ?? '—') ?></td>
+                        <td><a href="#" onclick="abrirFicha(<?= (int)$r['id_meta'] ?>);return false;"><?= e($r['actividad']) ?></a></td>
+                        <td>+<?= formatoNumero($r['valor_avance']) ?></td>
+                        <td><?= etiquetaRevision($r['estado_revision']) ?><?= $r['comentario_revision'] ? '<div class="text-muted" style="font-size:.75rem;">' . e($r['comentario_revision']) . '</div>' : '' ?></td>
+                        <td><?= e($r['nombre_revisor'] ?? '—') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+<?php
+}
+
+// Aprueba un avance "En revisión": lo suma a la meta en una transacción.
+function AprobarAvance()
+{
+    global $obj;
+    $conexion  = $obj->conexion();
+    $id_avance = (int)($_POST['id_avance'] ?? 0);
+
+    mysqli_begin_transaction($conexion);
+    try {
+        $avance = consultarPreparado("SELECT id_meta, valor_avance, estado_revision FROM avances_meta WHERE id_avance = ? FOR UPDATE", 'i', [$id_avance]);
+        if (!$avance || $avance[0]['estado_revision'] !== 'En revisión') {
+            mysqli_rollback($conexion);
+            responderJson(['ok' => false, 'mensaje' => 'Este avance ya fue revisado por alguien más. Recarga la lista.']);
+        }
+        $id_meta = (int)$avance[0]['id_meta'];
+        $meta    = consultarPreparado("SELECT actividad, meta_programada, meta_alcanzada FROM metas WHERE id_meta = ? FOR UPDATE", 'i', [$id_meta])[0];
+
+        [$nuevaAlcanzada, $nuevoEstado] = sumarAvanceAMeta($id_meta, $meta, $avance[0]['valor_avance']);
+        ejecutarPreparado(
+            "UPDATE avances_meta SET estado_revision = 'Aprobado', revisado_por = ?, revisado_en = NOW(), comentario_revision = NULL WHERE id_avance = ?",
+            'ii', [(int)$_SESSION['id_usuario'], $id_avance]
+        );
+        registrarBitacora('Aprobar avance', 'Avance #' . $id_avance . ' de la meta #' . $id_meta . ' (' . $meta['actividad'] . '): +'
+            . formatoNumero($avance[0]['valor_avance']) . ', nuevo total ' . formatoNumero($nuevaAlcanzada) . ', estado ' . $nuevoEstado);
+        mysqli_commit($conexion);
+        responderJson(['ok' => true, 'mensaje' => 'Avance aprobado. La meta lleva ' . formatoNumero($nuevaAlcanzada) . ' (' . $nuevoEstado . ').']);
+    } catch (Throwable $error) {
+        mysqli_rollback($conexion);
+        error_log('AprobarAvance: ' . $error);
+        responderJson(['ok' => false, 'mensaje' => 'No se pudo aprobar. Inténtalo de nuevo.']);
+    }
+}
+
+function DevolverAvance()
+{
+    $id_avance  = (int)($_POST['id_avance'] ?? 0);
+    $comentario = trim($_POST['comentario'] ?? '');
+    if (mb_strlen($comentario) < 5)   responderJson(['ok' => false, 'mensaje' => 'Explica al enlace por qué se devuelve (mínimo 5 caracteres).']);
+    if (mb_strlen($comentario) > 500) responderJson(['ok' => false, 'mensaje' => 'El comentario admite máximo 500 caracteres.']);
+
+    $cambiadas = ejecutarPreparado(
+        "UPDATE avances_meta SET estado_revision = 'Devuelto', revisado_por = ?, revisado_en = NOW(), comentario_revision = ?
+         WHERE id_avance = ? AND estado_revision = 'En revisión'",
+        'isi', [(int)$_SESSION['id_usuario'], $comentario, $id_avance]
+    );
+    if ($cambiadas !== 1) responderJson(['ok' => false, 'mensaje' => 'Este avance ya fue revisado por alguien más. Recarga la lista.']);
+    try {
+        registrarBitacora('Devolver avance', 'Avance #' . $id_avance . ': ' . $comentario);
+    } catch (Throwable $error) {
+    }
+    responderJson(['ok' => true, 'mensaje' => 'Avance devuelto al enlace con tu comentario.']);
+}
+
+// Números para los avisos del menú: pendientes de revisar (Planeación) o devueltos (enlace).
+function ContarPendientes()
+{
+    if (esEnlace()) {
+        $filas = consultarPreparado(
+            "SELECT SUM(estado_revision = 'En revisión') AS en_revision, SUM(estado_revision = 'Devuelto') AS devueltos
+             FROM avances_meta WHERE registrado_por = ?",
+            'i', [(int)$_SESSION['id_usuario']]
+        );
+        responderJson(['en_revision' => (int)($filas[0]['en_revision'] ?? 0), 'devueltos' => (int)($filas[0]['devueltos'] ?? 0)]);
+    }
+    $filas = consultarPreparado("SELECT COUNT(*) AS n FROM avances_meta WHERE estado_revision = 'En revisión'");
+    responderJson(['pendientes' => (int)$filas[0]['n']]);
+}
+
+
+////////////////////// PANEL DEL ENLACE //////////////////////
+
+// Números del inicio del enlace: sus metas por estado y sus avances.
+function ResumenEnlace()
+{
+    [$filtro, $tipos, $parametros] = filtroDependencia('p');
+    $metas = consultarPreparado(
+        "SELECT COUNT(*) AS total, SUM(m.estado = 'Terminado') AS terminadas,
+                SUM(m.estado = 'En Proceso') AS en_proceso, SUM(m.estado = 'Pendiente') AS pendientes
+         FROM metas m INNER JOIN programas p ON m.id_programa = p.id_programa WHERE 1 = 1" . $filtro,
+        $tipos, $parametros
+    )[0];
+    responderJson([
+        'dependencia' => dependenciaDelEnlace(),
+        'total'       => (int)$metas['total'],
+        'terminadas'  => (int)$metas['terminadas'],
+        'en_proceso'  => (int)$metas['en_proceso'],
+        'pendientes'  => (int)$metas['pendientes'],
+    ]);
+}
+
+// Avances que mandó el enlace, con su resultado.
+function VistaMisAvances()
+{
+    $avances = consultarPreparado(
+        "SELECT a.*, m.actividad, m.unidad_medida, r.nombre AS nombre_revisor,
+                (SELECT COUNT(*) FROM evidencias ev WHERE ev.id_avance = a.id_avance) AS num_evidencias
+         FROM avances_meta a
+         INNER JOIN metas m   ON a.id_meta = m.id_meta
+         LEFT JOIN usuarios r ON a.revisado_por = r.id_usuario
+         WHERE a.registrado_por = ?
+         ORDER BY FIELD(a.estado_revision, 'Devuelto', 'En revisión', 'Aprobado'), a.creado_en DESC
+         LIMIT 200",
+        'i', [(int)$_SESSION['id_usuario']]
+    );
+?>
+    <h5 class="fw-bold mb-1" style="color:#0A2647;"><i class="bi bi-send-check me-2"></i>Mis avances enviados</h5>
+    <p class="text-muted mb-3" style="font-size:.85rem;">Primero aparecen los devueltos (revisa el comentario y registra el avance corregido), luego los que esperan revisión.</p>
+    <?php if (!$avances): ?>
+        <p class="text-muted">Todavía no has registrado avances. Entra a <strong>Mis metas</strong> y usa el botón <i class="bi bi-plus-circle-fill" style="color:#2fa86a;"></i>.</p>
+        <?php return; ?>
+    <?php endif; ?>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle" style="font-size:.84rem;">
+            <thead class="table-light"><tr><th>Enviado</th><th>Meta</th><th>Cantidad</th><th>Evidencias</th><th>Estado</th><th>Comentario de Planeación</th></tr></thead>
+            <tbody>
+            <?php foreach ($avances as $a): ?>
+                <tr>
+                    <td class="text-nowrap"><?= date('d/m/Y', strtotime($a['creado_en'])) ?></td>
+                    <td><a href="#" onclick="abrirFicha(<?= (int)$a['id_meta'] ?>);return false;"><?= e($a['actividad']) ?></a></td>
+                    <td class="text-nowrap">+<?= formatoNumero($a['valor_avance']) ?> <?= e($a['unidad_medida']) ?></td>
+                    <td class="text-center"><?= (int)$a['num_evidencias'] ?></td>
+                    <td><?= etiquetaRevision($a['estado_revision']) ?></td>
+                    <td><?= $a['comentario_revision'] ? e($a['comentario_revision']) . '<div class="text-muted" style="font-size:.72rem;">' . e($a['nombre_revisor'] ?? '') . '</div>' : '<span class="text-muted">—</span>' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
 <?php
 }
 
@@ -1091,7 +1414,8 @@ function DatosCalendario()
 // Usa la tabla observaciones_meta (sql/planeacion_extra.sql).
 
 
-function SeccionObservaciones($id_meta)
+// $soloLectura: el enlace ve las observaciones de Planeación pero no agrega ni marca nada.
+function SeccionObservaciones($id_meta, $soloLectura = false)
 {
     try {
         $observaciones = consultarPreparado(
@@ -1110,6 +1434,7 @@ function SeccionObservaciones($id_meta)
 ?>
     <h6 class="fw-bold mb-3" style="color:#0A2647;"><i class="bi bi-chat-left-text me-2"></i>Observaciones y acuerdos</h6>
 
+    <?php if (!$soloLectura): ?>
     <form id="frmObservacion" onsubmit="guardarObservacion(event)" class="p-3 rounded mb-3" style="background:#f4f6fa;">
         <input type="hidden" name="id_meta" value="<?= (int)$id_meta ?>">
         <div class="row g-2">
@@ -1131,6 +1456,7 @@ function SeccionObservaciones($id_meta)
             <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Agregar</button></div>
         </div>
     </form>
+    <?php endif; ?>
 
     <?php if (empty($observaciones)): ?>
         <p class="text-muted" style="font-size:.85rem;">Todavía no hay observaciones para esta meta.</p>
@@ -1156,10 +1482,10 @@ function SeccionObservaciones($id_meta)
                 </div>
                 <div class="text-muted" style="font-size:.75rem;">
                     <?= e($o['nombre'] ?? 'Usuario eliminado') ?> · <?= date('d/m/Y H:i', strtotime($o['creado_en'])) ?>
-                    <?php if ($esAcuerdo && !$o['cumplido']): ?>
+                    <?php if (!$soloLectura && $esAcuerdo && !$o['cumplido']): ?>
                         <a href="#" onclick="cumplirAcuerdo(<?= (int)$o['id_observacion'] ?>);return false;" class="ms-2" title="Marcar como cumplido"><i class="bi bi-check2-square" style="color:#1a6b3c;"></i></a>
                     <?php endif; ?>
-                    <?php if ((int)$o['registrado_por'] === (int)$_SESSION['id_usuario']): ?>
+                    <?php if (!$soloLectura && (int)$o['registrado_por'] === (int)$_SESSION['id_usuario']): ?>
                         <a href="#" onclick="eliminarObservacion(<?= (int)$o['id_observacion'] ?>);return false;" class="ms-2" title="Eliminar"><i class="bi bi-trash" style="color:#c0392b;"></i></a>
                     <?php endif; ?>
                 </div>

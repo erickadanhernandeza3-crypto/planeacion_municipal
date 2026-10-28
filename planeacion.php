@@ -29,6 +29,7 @@ if (!revisarInactividad()) {
   <script src="https://cdn.datatables.net/responsive/3.0.6/js/dataTables.responsive.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.0/dist/sweetalert2.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>const ROL_USUARIO = 'planeacion';</script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
   <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Seguimiento) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />
@@ -141,6 +142,14 @@ if (!revisarInactividad()) {
                class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
               <i class="bi bi-speedometer2 fs-5"></i>
               <span class="d-none d-sm-inline">Seguimiento y Avances</span>
+            </a>
+          </li>
+          <li class="nav-item w-100">
+            <a href="javascript:abrirRevision()"
+               class="nav-link px-0 align-middle text-white d-flex align-items-center gap-2" style="font-size:.84rem;">
+              <i class="bi bi-clipboard-check fs-5"></i>
+              <span class="d-none d-sm-inline">Revisión de Avances</span>
+              <span class="badge rounded-pill bg-warning text-dark ms-auto" id="badgeRevision" hidden></span>
             </a>
           </li>
           <li class="nav-item w-100">
@@ -267,6 +276,7 @@ if (!revisarInactividad()) {
         </div>
 
         <!-- Aviso de metas vencidas / por vencer (lo llena cargarAvisoAlertas) -->
+        <div id="avisoAvances"></div>
         <div id="avisoAlertas"></div>
 
         <!-- Resumen por estado -->
@@ -336,7 +346,8 @@ fetch('Php/controlador.php?idopc=DatosGraficaEstados&ops=&idr=0&msg=0')
     });
   }).catch(() => {});
 
-// Aviso de alertas de vencimiento
+// Avisos: avances por revisar y alertas de vencimiento
+actualizarAvisosRevision();
 cargarAvisoAlertas();
 </script>
 

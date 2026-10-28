@@ -163,3 +163,16 @@ table.dataTable tbody tr:hover {
 .aviso-alerta i { color: var(--color); }
 .aviso-alerta a { margin-left: auto; font-weight: 600; color: var(--color); text-decoration: none; }
 .aviso-alerta a:hover { text-decoration: underline; }
+
+
+/* ══════════ EVIDENCIAS (fotos y PDF) ══════════ */
+.evidencias { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.evidencia { position: relative; border: 1px solid #e3e7ee; border-radius: 8px; overflow: hidden; background: #fff; aspect-ratio: 4 / 3; }
+.evidencia a { display: block; width: 100%; height: 100%; }
+.evidencia img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.evidencia a:focus-visible { outline: 3px solid #2563EB; outline-offset: -3px; }
+.evidencia-pdf { display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px; text-decoration: none; color: #b42318; background: #fdf2f2; }
+.evidencia-pdf i { font-size: 1.8rem; }
+.evidencia-pdf span { font-size: .7rem; color: #374151; text-align: center; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.evidencia-borrar { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: .7rem; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.evidencia-borrar:hover { background: #b42318; }

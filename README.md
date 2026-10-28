@@ -9,8 +9,28 @@ Está hecho en PHP 8 y MySQL 8, con Bootstrap, DataTables, Chart.js y SweetAlert
 | Rol | Qué puede hacer |
 |---|---|
 | **Administrador** | Usuarios, ejes, programas, indicadores MIR, comparativo trimestral y bitácora. |
-| **Planeación** | Metas, seguimiento y avances, alertas, calendario, físico vs financiero, reportes y observaciones. |
+| **Planeación** | Metas, seguimiento y avances, **revisión de los avances de los enlaces**, alertas, calendario, físico vs financiero, reportes, observaciones y fichas técnicas MIR. |
+| **Enlace de dependencia** | Solo ve las metas de los programas cuya *Área responsable* es su dependencia. Registra avances con evidencias (fotos y PDF). Sus avances quedan **En revisión** hasta que Planeación los aprueba o los devuelve con un comentario. |
 | **Público (con clave)** | `avance.php?clave=...`: resumen de solo lectura del avance por programa. |
+
+### Flujo de un avance de un enlace
+
+1. El enlace registra el avance y adjunta sus evidencias. El avance queda **En revisión** y todavía no se suma a la meta.
+2. Planeación lo ve en **Revisión de Avances**, con el contador en el menú, junto con sus fotos y PDF.
+3. **Aprobar:** se suma a la meta y se recalcula su estado, todo en una sola transacción.
+   **Devolver:** el enlace ve el motivo en "Mis avances enviados" y registra el avance corregido.
+
+Los avances que registra Planeación quedan aprobados directamente, como antes. El comparativo trimestral solo cuenta los avances aprobados.
+
+### Indicadores MIR
+
+Cada indicador tiene su **ficha técnica**:
+- nombre del indicador y fórmula;
+- dimensión, sentido y frecuencia;
+- línea base, año de la línea base y meta anual;
+- medios de verificación y supuestos.
+
+Desde "Indicadores (MIR)" se imprime la ficha técnica de cada indicador, con su semáforo de cumplimiento (verde 90% o más, amarillo de 70% a 89%, rojo menos de 70%), y la **Matriz de Indicadores para Resultados** completa del programa.
 
 ## Instalación local (Laragon o XAMPP)
 
@@ -42,6 +62,15 @@ El `Dockerfile` arma la imagen con PHP 8.2 y Apache. En el Web Service de Render
 |---|---|
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Conexión a la base de MySQL (Clever Cloud). |
 | `CLAVE_AVANCE` | Clave de `avance.php`. Si no se define, esa página queda cerrada. |
+| `CLOUDINARY_URL` | Cuenta de Cloudinary para las evidencias: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`. Se copia del Dashboard de Cloudinary ("API environment variable"). Sin ella, el sistema avisa que las evidencias no están configuradas. |
+
+**Base de datos sin acceso directo.** Al arrancar, el sistema crea solo las tablas y columnas nuevas (`Php/migraciones.php`, tabla `esquema_version`). Después de cada despliegue, la primera petición aplica lo que falte. No hay que correr scripts a mano.
+
+**Evidencias.** Render borra los archivos del servidor en cada despliegue, por eso las fotos y los PDF se guardan en Cloudinary y en la base solo queda el enlace:
+- Las fotos se reducen en el navegador antes de subirse (máximo 1600 px).
+- El servidor revisa el tipo real del archivo (JPG, PNG, WEBP o PDF) y que pese máximo 5 MB.
+- La subida se firma en el servidor; las claves nunca llegan al navegador.
+- Al borrar una meta, un programa o un eje, también se borran sus archivos en Cloudinary.
 
 En producción la imagen ya trae:
 - Los errores de PHP se guardan en el log y nunca se muestran en pantalla.
@@ -81,9 +110,12 @@ Guarda los respaldos fuera del servidor (por ejemplo, en una unidad compartida d
 index.php            Login
 administrador.php    Panel del administrador
 planeacion.php       Panel de planeación
+enlace.php           Panel del enlace de dependencia
 avance.php           Vista pública con clave
 Php/controlador.php  Entrada única de todas las peticiones (idopc=...)
-Php/comunes_extra.php  Seguridad, validaciones y funciones compartidas
+Php/comunes_extra.php  Seguridad, roles, validaciones y funciones compartidas
+Php/migraciones.php  Actualiza la base de datos sola al desplegar
+Php/evidencias.php   Subida y borrado de evidencias en Cloudinary
 Php/operaciones.php  CRUD de ejes, programas, metas, usuarios e indicadores
 Php/vistas.php       Formularios y tablas
 Php/planeacion_extra.php / admin_extra.php  Módulos de cada panel
