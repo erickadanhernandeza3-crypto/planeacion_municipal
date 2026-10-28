@@ -191,8 +191,8 @@ function DatosBitacora()
 
     if ($id_usuario > 0) { $sql .= " AND b.id_usuario = ?"; $tipos .= 'i'; $parametros[] = $id_usuario; }
     if ($accion !== '')  { $sql .= " AND b.accion = ?";     $tipos .= 's'; $parametros[] = $accion; }
-    if (fechaValida($desde)) { $sql .= " AND b.fecha >= ?"; $tipos .= 's'; $parametros[] = $desde . ' 00:00:00'; }
-    if (fechaValida($hasta)) { $sql .= " AND b.fecha <= ?"; $tipos .= 's'; $parametros[] = $hasta . ' 23:59:59'; }
+    if (esFechaValida($desde)) { $sql .= " AND b.fecha >= ?"; $tipos .= 's'; $parametros[] = $desde . ' 00:00:00'; }
+    if (esFechaValida($hasta)) { $sql .= " AND b.fecha <= ?"; $tipos .= 's'; $parametros[] = $hasta . ' 23:59:59'; }
     $sql .= " ORDER BY b.id_bitacora DESC LIMIT 5000";
 
     try {
@@ -215,7 +215,8 @@ function DatosBitacora()
     responderJson(['data' => $lista]);
 }
 
-function fechaValida($fecha)
+// true si el texto es una fecha AAAA-MM-DD real (para los filtros opcionales de la bitácora).
+function esFechaValida($fecha)
 {
     $d = DateTime::createFromFormat('Y-m-d', $fecha);
     return $d && $d->format('Y-m-d') === $fecha;

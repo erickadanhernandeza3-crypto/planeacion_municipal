@@ -883,9 +883,9 @@ function ReporteConcentracion()
             // conservando el orden de aparición, tal como en la sectorización oficial.
             $grupos = [];
             foreach ($programas as $p) {
-                $clave = trim($p['descripcion']) !== '' ? $p['descripcion'] : ('__' . $p['id_programa']);
+                $clave = trim((string)$p['descripcion']) !== '' ? $p['descripcion'] : ('__' . $p['id_programa']);
                 if (!isset($grupos[$clave])) {
-                    $grupos[$clave] = ['nombre' => trim($p['descripcion']) !== '' ? $p['descripcion'] : $p['nombre_programa'], 'programas' => []];
+                    $grupos[$clave] = ['nombre' => trim((string)$p['descripcion']) !== '' ? $p['descripcion'] : $p['nombre_programa'], 'programas' => []];
                 }
                 $grupos[$clave]['programas'][] = $p;
             }
