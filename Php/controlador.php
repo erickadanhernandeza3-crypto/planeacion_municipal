@@ -6,6 +6,7 @@ $obj = new OperacionesBd;
 // recibe un mensaje entendible (js/funciones.js lo muestra en una alerta).
 set_exception_handler(function (Throwable $error) {
     error_log('controlador.php [' . ($_GET['idopc'] ?? '') . '] ' . $error);
+    if (function_exists('revisarEsquemaTrasError')) revisarEsquemaTrasError($error);
     if (!headers_sent()) {
         http_response_code(500);
         header('Content-Type: text/plain; charset=utf-8');

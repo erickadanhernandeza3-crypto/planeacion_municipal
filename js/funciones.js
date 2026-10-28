@@ -27,6 +27,51 @@ document.addEventListener('submit', function (e) {
 });
 
 
+/////////////////////// Librerías para exportar (carga diferida) ///////////////////////
+// JSZip (Excel) y pdfmake (PDF) pesan ~3 MB. Antes se descargaban al abrir cada panel
+// aunque nadie exportara; ahora se descargan en segundo plano cuando la página ya
+// está lista, y si alguien exporta antes, el botón espera a que terminen.
+const LIBRERIAS_EXPORTAR = [
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js'   // necesita pdfmake antes
+];
+let promesaExportar = null;
+
+function cargarLibreriasExportar() {
+  if (!promesaExportar) {
+    const cargar = src => new Promise((listo, error) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = listo; s.onerror = error;
+      document.head.appendChild(s);
+    });
+    promesaExportar = Promise.all([cargar(LIBRERIAS_EXPORTAR[0]), cargar(LIBRERIAS_EXPORTAR[1])])
+      .then(() => cargar(LIBRERIAS_EXPORTAR[2]))
+      .catch(e => { promesaExportar = null; throw e; });   // si falló la red, se reintenta al siguiente clic
+  }
+  return promesaExportar;
+}
+
+// Botón de exportar de DataTables ('excelHtml5' o 'pdfHtml5') que funciona aunque
+// las librerías todavía no hayan llegado: se muestra siempre y al hacer clic las espera.
+function botonExportar(tipo, opciones) {
+  return Object.assign({
+    extend: tipo,
+    available: () => true,
+    action: function (e, dt, nodo, config, listo) {
+      const base = $.fn.dataTable.ext.buttons[tipo].action;
+      const self = this;
+      cargarLibreriasExportar()
+        .then(() => base.call(self, e, dt, nodo, config, listo))
+        .catch(() => Swal.fire({ title: 'No se pudo preparar la exportación', text: 'Revisa tu conexión a internet e inténtalo de nuevo.', icon: 'error' }));
+    }
+  }, opciones);
+}
+
+// Descarga en segundo plano un momento después de que la página terminó de cargar.
+window.addEventListener('load', () => setTimeout(() => cargarLibreriasExportar().catch(() => {}), 2000));
+
+
 /////////////////////// Función Buscar ///////////////////////
 function buscar(idopc, iddiv, ops, idr, msg) {
   const contenedor = seleccionardiv(iddiv);

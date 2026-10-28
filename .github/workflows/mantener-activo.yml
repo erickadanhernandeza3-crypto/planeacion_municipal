@@ -1,0 +1,21 @@
+# Mantiene despierto el servicio de Render en horario de oficina.
+# El plan gratis de Render se duerme a los 15 minutos sin visitas y la siguiente
+# tarda ~50 segundos en abrir. Esta tarea visita salud.php cada 10 minutos de
+# 7:00 a 21:00 (hora del centro de México, UTC-6). Fuera de ese horario se deja
+# dormir para no gastar las 750 horas gratis al mes de Render.
+# GitHub puede retrasar unos minutos las tareas programadas; es normal.
+name: Mantener activo en Render
+
+on:
+  schedule:
+    - cron: '*/10 13-23 * * *'   # 7:00 a 17:59 en México
+    - cron: '*/10 0-2 * * *'     # 18:00 a 20:59 en México
+  workflow_dispatch:              # botón para correrla a mano desde la pestaña Actions
+
+jobs:
+  visitar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Visitar salud.php
+        run: curl -sS --max-time 120 https://planeacion-municipal.onrender.com/salud.php || true

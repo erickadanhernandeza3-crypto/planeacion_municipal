@@ -189,8 +189,8 @@ function cargarTablaSeguimiento() {
     "layout": {
       "topStart": ['pageLength', {
         "buttons": [
-          { extend: 'excelHtml5', text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel', title: titulo, exportOptions: exportar },
-          { extend: 'pdfHtml5',   text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',     title: titulo, exportOptions: exportar, orientation: 'landscape', pageSize: 'LETTER' },
+          botonExportar('excelHtml5', { text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel', title: titulo, exportOptions: exportar }),
+          botonExportar('pdfHtml5', {   text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',     title: titulo, exportOptions: exportar, orientation: 'landscape', pageSize: 'LETTER' }),
           { extend: 'print',      text: '<i class="bi bi-printer me-1"></i>Imprimir',         title: titulo, exportOptions: exportar }
         ]
       }]
@@ -337,8 +337,8 @@ const idiomaTablasPlan = {
 function botonesExportar(titulo, columnas) {
   const exportar = { columns: columnas };
   return [
-    { extend: 'excelHtml5', text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel', title: titulo, exportOptions: exportar },
-    { extend: 'pdfHtml5',   text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',     title: titulo, exportOptions: exportar, orientation: 'landscape', pageSize: 'LETTER' },
+    botonExportar('excelHtml5', { text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel', title: titulo, exportOptions: exportar }),
+    botonExportar('pdfHtml5', {   text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',     title: titulo, exportOptions: exportar, orientation: 'landscape', pageSize: 'LETTER' }),
     { extend: 'print',      text: '<i class="bi bi-printer me-1"></i>Imprimir',         title: titulo, exportOptions: exportar }
   ];
 }

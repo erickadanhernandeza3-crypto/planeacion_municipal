@@ -31,14 +31,11 @@ if (!revisarInactividad()) {
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>const ROL_USUARIO = 'planeacion';</script>
   <script src="js/funciones.js?v=<?php echo filemtime(__DIR__ . '/js/funciones.js'); ?>"></script>
-  <!-- Exportar tablas a Excel / PDF / Imprimir (módulo Seguimiento) -->
+  <!-- Botones de exportar. JSZip y pdfmake se cargan después, solo si hacen falta (js/funciones.js) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.0/css/buttons.dataTables.min.css" />
   <script src="https://cdn.datatables.net/buttons/3.2.0/js/dataTables.buttons.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.html5.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/3.2.0/js/buttons.print.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <script src="js/extras_ui.js?v=<?php echo filemtime(__DIR__ . '/js/extras_ui.js'); ?>"></script>
   <script src="js/planeacion_extra.js?v=<?php echo filemtime(__DIR__ . '/js/planeacion_extra.js'); ?>"></script>
   <link rel="stylesheet" href="css/estilos.css?v=<?php echo filemtime(__DIR__ . '/css/estilos.css'); ?>">

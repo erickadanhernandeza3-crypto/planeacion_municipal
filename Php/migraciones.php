@@ -23,7 +23,18 @@ function aplicarMigraciones(mysqli $conexion)
     if ($revisado) return;
     $revisado = true;
 
-    if (versionEsquema($conexion) >= VERSION_ESQUEMA) return;
+    // Cuando ya se confirmó que la base está al día, se deja una marca en la carpeta
+    // temporal del servidor: así no se gasta una consulta en cada petición (la base
+    // puede estar lejos y cada consulta cuenta). Si Render reinicia, la marca se
+    // borra y se vuelve a revisar una sola vez.
+    $marca = sys_get_temp_dir() . '/planeacion_esquema_' . VERSION_ESQUEMA . '_'
+           . md5(($conexion->host_info ?? '') . '|' . configuracion('DB_NAME', 'planeacion_municipal_adan'));
+    if (is_file($marca)) return;
+
+    if (versionEsquema($conexion) >= VERSION_ESQUEMA) {
+        @touch($marca);
+        return;
+    }
 
     $bloqueo = $conexion->query("SELECT GET_LOCK('planeacion_migraciones', 30)")->fetch_row()[0];
     if ((int)$bloqueo !== 1) return;
@@ -38,6 +49,7 @@ function aplicarMigraciones(mysqli $conexion)
             $stmt->close();
             error_log("Migración $version aplicada.");
         }
+        @touch($marca);
     } catch (Throwable $error) {
         error_log('Error al aplicar migraciones: ' . $error);
     } finally {
@@ -141,4 +153,16 @@ function listaMigraciones()
             agregarColumna($c, 'indicadores', 'supuestos',           "TEXT NULL AFTER medios_verificacion");
         },
     ];
+}
+
+// Si una consulta falla porque falta una tabla (1146) o una columna (1054) -por ejemplo,
+// se restauró un respaldo viejo sin reiniciar el servidor-, se borra la marca para que
+// la siguiente petición vuelva a revisar la base y aplique lo que falte.
+function revisarEsquemaTrasError(Throwable $error)
+{
+    if ($error instanceof mysqli_sql_exception && in_array($error->getCode(), [1054, 1146], true)) {
+        foreach (glob(sys_get_temp_dir() . '/planeacion_esquema_*') ?: [] as $marca) {
+            @unlink($marca);
+        }
+    }
 }
